@@ -1,0 +1,1373 @@
+For reference here is the script that I’m using on our end to fit our data though you’ll want to disable the IPW reweighing for your experimental setup
+
+#!/usr/bin/env python
+
+import argparse
+import gc
+import importlib
+import inspect
+import itertools
+import json
+import os
+import pickle
+import re
+import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
+
+os.environ["JAX_PLATFORMS"] = "cpu"
+os.environ["JAX_ENABLE_X64"] = "1"
+
+import jax.numpy as jnp
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import yaml
+
+from bayesianquilts.imputation.mixed import (
+    IrtMixedImputationModel,
+    PairwiseOnlyImputationModel,
+)
+from bayesianquilts.imputation.pairwise_stacking import PairwiseOrdinalStackingModel
+from bayesianquilts.irt.grm import GRModel
+
+
+# -----------------------------------------------------------------------------
+# Compatibility patches
+# -----------------------------------------------------------------------------
+def patch_all_training_loops_for_batchless_marginal_advi():
+    likely_modules = [
+        "bayesianquilts.training",
+        "bayesianquilts.util",
+        "bayesianquilts.util.training",
+        "bayesianquilts.utils.training",
+        "bayesianquilts.optimization",
+        "bayesianquilts.inference",
+        "bayesianquilts.irt.irt",
+        "bayesianquilts.irt.grm",
+    ]
+
+    for module_name in likely_modules:
+        try:
+            importlib.import_module(module_name)
+        except Exception:
+            pass
+
+    def takes_single_positional_arg(fn):
+        try:
+            sig = inspect.signature(fn)
+        except Exception:
+            return False
+
+        params = list(sig.parameters.values())
+        positional = [
+            p
+            for p in params
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        has_varargs = any(
+            p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+        )
+        return len(positional) == 1 and not has_varargs
+
+    def wrap_loss_if_needed(fn):
+        if not callable(fn):
+            return fn
+
+        if not takes_single_positional_arg(fn):
+            return fn
+
+        def loss_fn_accepting_batch(batch, params):
+            return fn(params)
+
+        return loss_fn_accepting_batch
+
+    def make_training_loop_compat(original_training_loop):
+        if getattr(original_training_loop, "_bq_batchless_advi_wrapped", False):
+            return original_training_loop
+
+        def training_loop_compat(*args, **kwargs):
+            args = list(args)
+            kwargs = dict(kwargs)
+
+            if "loss_fn" in kwargs:
+                kwargs["loss_fn"] = wrap_loss_if_needed(kwargs["loss_fn"])
+            else:
+                for i, arg in enumerate(args):
+                    if callable(arg) and takes_single_positional_arg(arg):
+                        args[i] = wrap_loss_if_needed(arg)
+                        break
+
+            return original_training_loop(*args, **kwargs)
+
+        training_loop_compat._bq_batchless_advi_wrapped = True
+        training_loop_compat._bq_original_training_loop = original_training_loop
+        return training_loop_compat
+
+    patched = []
+
+    for module_name, module in list(sys.modules.items()):
+        if not module_name.startswith("bayesianquilts"):
+            continue
+
+        if hasattr(module, "training_loop"):
+            original = getattr(module, "training_loop")
+            if callable(original):
+                setattr(module, "training_loop", make_training_loop_compat(original))
+                patched.append(module_name)
+
+    for cls in [GRModel] + list(GRModel.__mro__):
+        method = getattr(cls, "fit_marginal_advi", None)
+        if method is None:
+            continue
+
+        globals_dict = getattr(method, "__globals__", None)
+        if globals_dict is None and hasattr(method, "__func__"):
+            globals_dict = method.__func__.__globals__
+
+        if globals_dict and "training_loop" in globals_dict:
+            original = globals_dict["training_loop"]
+            if callable(original):
+                globals_dict["training_loop"] = make_training_loop_compat(original)
+                patched.append(f"{cls.__name__}.__globals__")
+
+    if not patched:
+        print("WARNING: Did not find a training_loop to patch. ADVI may still fail.")
+    else:
+        print(
+            "Applied bayesianquilts marginal ADVI training_loop compatibility patch to: "
+            + ", ".join(sorted(set(patched)))
+        )
+
+
+def patch_tfp_transformed_distribution_entropy_for_advi():
+    import tensorflow_probability.substrates.jax as tfp
+
+    tfd = tfp.distributions
+    cls = tfd.TransformedDistribution
+
+    if getattr(cls, "_bq_entropy_patch_applied", False):
+        return
+
+    original_entropy = cls._entropy
+
+    def entropy_compat(self, **kwargs):
+        try:
+            return original_entropy(self, **kwargs)
+        except NotImplementedError:
+            return self.distribution.entropy()
+
+    cls._entropy = entropy_compat
+    cls._bq_entropy_patch_applied = True
+
+    print("Applied TFP TransformedDistribution entropy fallback patch for ADVI.")
+
+
+patch_all_training_loops_for_batchless_marginal_advi()
+patch_tfp_transformed_distribution_entropy_for_advi()
+
+
+# -----------------------------------------------------------------------------
+# Paths / config
+# -----------------------------------------------------------------------------
+HOME = Path.home()
+WORKSPACE = HOME / "workspace"
+
+OUTPUT_PATH_DEFAULT = WORKSPACE / "wdfab_analyses" / "mice" / "mice_results"
+DATA_PATH_DEFAULT = WORKSPACE / "wdfab_factorization" / "data"
+ITEM_TO_SCALE_PATH_DEFAULT = WORKSPACE / "wdfab_analyses" / "item_to_scale.yaml"
+IMPUTATION_MODEL_PATH_DEFAULT = (
+    WORKSPACE / "wdfab_analyses" / "mice" / "wdfab_imputation_model"
+)
+
+TARGET_GROUP1_PREVALENCE = 0.25
+RESP_CARDINALITY = 5
+
+COLORS = {"Baseline": "#4477AA", "Pairwise": "#228833"}
+MARKERS = {"Baseline": "o", "Pairwise": "D"}
+
+
+# -----------------------------------------------------------------------------
+# Data utilities
+# -----------------------------------------------------------------------------
+def advanced_column_merge(df):
+    def get_canonical_name(col):
+        base = re.sub(r"[a-zA-Z]+$", "", col)
+
+        if base == "PD005_PD006":
+            return "PD005PD006"
+        elif base == "PD245_142":
+            return "PD245PD142"
+        elif base == "PD438_PD439":
+            return "PD438PD439"
+        elif base == "PD438_PD4439":
+            return "PD438PD439"
+        elif base == "PD440_PD441":
+            return "PD440PD441"
+        elif base == "PD4561":
+            return "PD456"
+
+        return base
+
+    column_groups = {}
+    for col in df.columns:
+        canonical = get_canonical_name(col)
+        column_groups.setdefault(canonical, []).append(col)
+
+    merged_data = {}
+    for canonical, cols in column_groups.items():
+        if len(cols) > 1:
+            merged_data[canonical] = df[cols].max(axis=1)
+        else:
+            merged_data[canonical] = df[cols[0]]
+
+    return pd.DataFrame(merged_data, index=df.index)
+
+
+def group_keys_by_labels(data, labels):
+    label_to_idx = {label: i for i, label in enumerate(labels)}
+    result = [[] for _ in range(len(labels))]
+
+    for key, value in data.items():
+        if value in label_to_idx:
+            result[label_to_idx[value]].append(key)
+
+    return result
+
+
+def compute_ipw_weights(group_ids, target_p1=0.25, normalize=True):
+    group_ids = np.asarray(group_ids).astype(int)
+
+    p1_sample = np.mean(group_ids == 1)
+    p0_sample = np.mean(group_ids == 0)
+
+    if p1_sample <= 0 or p0_sample <= 0:
+        raise ValueError("Both group 0 and group 1 must be present for IPW.")
+
+    weights = np.where(
+        group_ids == 1,
+        target_p1 / p1_sample,
+        (1.0 - target_p1) / p0_sample,
+    ).astype(np.float64)
+
+    if normalize:
+        weights = weights / np.mean(weights)
+
+    return weights
+
+
+def effective_sample_size(weights):
+    w = np.asarray(weights, dtype=np.float64)
+    w = w / np.sum(w)
+    return 1.0 / np.sum(w**2)
+
+
+def make_data_dict(dataframe, group_ids=None, target_p1=0.25):
+    data = {}
+
+    for col in dataframe.columns:
+        data[col] = dataframe[col].to_numpy().astype(np.float64)
+
+    data["person"] = np.arange(len(dataframe), dtype=np.float64)
+
+    if group_ids is not None:
+        data["sample_weights"] = compute_ipw_weights(
+            group_ids,
+            target_p1=target_p1,
+            normalize=True,
+        )
+
+    return data
+
+
+def compute_steps_per_epoch(num_people, batch_size):
+    batch_size = min(int(batch_size), int(num_people))
+    steps_per_epoch = int(np.ceil(num_people / batch_size))
+    return batch_size, steps_per_epoch
+
+
+def load_wdfab_data(data_path, item_to_scale_path, allowed_scales):
+    """
+    Load WDFAB data without inserting group columns into fragmented dataframes.
+
+    group_ids is tracked separately so 'group' cannot leak into response columns.
+    """
+    data_path = Path(data_path).expanduser()
+    item_to_scale_path = Path(item_to_scale_path).expanduser()
+
+    with open(item_to_scale_path, "r") as f:
+        item_to_scale = yaml.safe_load(f)
+
+    app = pd.read_csv(
+        data_path / "all_applicant_base_responses.csv",
+        low_memory=False,
+    ).copy()
+
+    con = pd.read_csv(
+        data_path / "all_normative_base_responses.csv",
+        low_memory=False,
+    ).copy()
+
+    app_group = np.ones(len(app), dtype=np.int8)
+    con_group = np.zeros(len(con), dtype=np.int8)
+    group_ids = np.concatenate([app_group, con_group])
+
+    combined = pd.concat([app, con], ignore_index=True, copy=False)
+
+    responses = combined.iloc[:, 12:].copy()
+    responses = advanced_column_merge(responses) - 1
+    responses = responses.replace(-1, np.nan)
+    responses = responses.copy()  # defragment after merge/replace
+
+    allowed_items = [
+        k
+        for k, v in item_to_scale.items()
+        if v in allowed_scales and not k.startswith("PD538")
+    ]
+
+    item_scale_keys = group_keys_by_labels(item_to_scale, labels=allowed_scales)
+
+    item_keys = [
+        key
+        for sublist in item_scale_keys
+        for key in sublist
+        if key in allowed_items and key in responses.columns
+    ]
+
+    scale_item_keys_by_name = {}
+    for scale_name, scale_keys in zip(allowed_scales, item_scale_keys):
+        scale_item_keys_by_name[scale_name] = [
+            k for k in scale_keys if k in allowed_items and k in responses.columns
+        ]
+
+    return {
+        "responses": responses,
+        "group_ids": group_ids,
+        "item_keys": item_keys,
+        "scale_item_keys_by_name": scale_item_keys_by_name,
+        "num_people": len(responses),
+    }
+
+
+# -----------------------------------------------------------------------------
+# Persistence helpers
+# -----------------------------------------------------------------------------
+def save_npz(path, **kwargs):
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(path, **kwargs)
+
+
+def load_pairwise_model(path):
+    path = Path(path).expanduser()
+    try:
+        return PairwiseOrdinalStackingModel.load_from_disk(path)
+    except AttributeError:
+        return PairwiseOrdinalStackingModel.load(str(path))
+
+
+def save_pairwise_model(model, path):
+    path = Path(path).expanduser()
+    try:
+        model.save_to_disk(path)
+    except AttributeError:
+        model.save(str(path))
+
+
+def save_bcm_model_artifact(model, path, source_model_path=None, source_name=None):
+    path = Path(path).expanduser()
+    path.mkdir(parents=True, exist_ok=True)
+
+    saved = False
+
+    if hasattr(model, "save_to_disk"):
+        try:
+            model.save_to_disk(path)
+            saved = True
+        except Exception as e:
+            print(f"BCM save_to_disk failed: {e}")
+
+    if not saved and hasattr(model, "save"):
+        try:
+            model.save(str(path))
+            saved = True
+        except Exception as e:
+            print(f"BCM save failed: {e}")
+
+    try:
+        with open(path / "bcm_model.pkl", "wb") as f:
+            pickle.dump(model, f)
+        saved = True
+    except Exception as e:
+        print(f"BCM pickle save failed: {e}")
+
+    if hasattr(model, "weights"):
+        try:
+            with open(path / "weights.json", "w") as f:
+                json.dump(model.weights, f, indent=2)
+        except Exception as e:
+            print(f"Could not save BCM weights: {e}")
+
+    metadata = {
+        "description": "BCM / mixed imputation model built after fitting and standardizing IRT.",
+        "source_model_path": str(source_model_path) if source_model_path is not None else None,
+        "source_name": source_name,
+        "is_irt_fit": False,
+        "conditional_on_prefit_irt": True,
+    }
+
+    with open(path / "metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    return saved
+
+
+# -----------------------------------------------------------------------------
+# IRT helpers
+# -----------------------------------------------------------------------------
+def eap_to_1d(eap_result):
+    return np.asarray(eap_result["eap"]).reshape(-1)
+
+
+def print_rhat(mcmc_samples, prefix="  "):
+    max_rhat_overall = 0.0
+
+    for var_name, samples in mcmc_samples.items():
+        arr = np.asarray(samples)
+
+        if arr.ndim < 2 or arr.shape[0] < 2:
+            continue
+
+        chain_means = np.mean(arr, axis=1)
+        between_var = np.var(chain_means, axis=0, ddof=1)
+        within_var = np.mean(np.var(arr, axis=1, ddof=1), axis=0)
+        n = arr.shape[1]
+
+        r_hat = np.sqrt(
+            ((n - 1) / n * within_var + between_var)
+            / np.maximum(within_var, 1e-30)
+        )
+
+        max_rhat = float(np.max(r_hat))
+        max_rhat_overall = max(max_rhat_overall, max_rhat)
+
+        print(
+            f"{prefix}{var_name} R-hat: "
+            f"mean={np.mean(r_hat):.4f}, max={max_rhat:.4f}"
+        )
+
+    print(f"{prefix}Max R-hat overall: {max_rhat_overall:.4f}")
+    return max_rhat_overall
+
+
+def summarize_mcmc_samples(mcmc_samples):
+    stats = {}
+
+    for k, v in mcmc_samples.items():
+        arr = np.asarray(v)
+        flat = arr.reshape(-1, *arr.shape[2:])
+
+        stats[k] = {
+            "mean": np.mean(flat, axis=0),
+            "std": np.std(flat, axis=0),
+        }
+
+    return stats
+
+
+def attach_imputation_pmfs(model, data):
+    out = dict(data)
+
+    if getattr(model, "imputation_model", None) is None:
+        return out
+
+    pmfs, weights = model._compute_batch_pmfs(out)
+
+    if pmfs is not None:
+        out["_imputation_pmfs"] = pmfs
+
+    if weights is not None:
+        out["_imputation_weights"] = weights
+
+    return out
+
+
+def fit_marginal_advi_warmstart(
+    model,
+    data,
+    num_samples,
+    advi_iterations,
+    learning_rate,
+    rank,
+    seed,
+    steps_per_epoch,
+):
+    num_epochs = max(1, int(np.ceil(advi_iterations / steps_per_epoch)))
+
+    print(
+        f"  ADVI warm-start: requested_iterations={advi_iterations}, "
+        f"steps_per_epoch={steps_per_epoch}, num_epochs={num_epochs}, "
+        f"actual_steps≈{num_epochs * steps_per_epoch}"
+    )
+
+    return model.fit_marginal_advi(
+        data,
+        data_iterator=itertools.repeat(None),
+        steps_per_epoch=steps_per_epoch,
+        num_samples=num_samples,
+        num_epochs=num_epochs,
+        learning_rate=learning_rate,
+        rank=rank,
+        seed=seed,
+        verbose=True,
+    )
+
+
+def fit_irt_mcmc_variant(
+    variant_name,
+    scale_item_keys,
+    scale_data,
+    num_people,
+    response_cardinality,
+    output_dir,
+    num_chains,
+    num_warmup,
+    num_samples,
+    step_size,
+    target_accept_prob,
+    advi_iterations,
+    advi_num_samples,
+    advi_learning_rate,
+    advi_rank,
+    batch_size,
+    seed,
+    imputation_model=None,
+    run_advi=True,
+    init_advi_params=None,
+):
+    print(f"\n--- {variant_name}: IRT setup ---")
+
+    model = GRModel(
+        item_keys=scale_item_keys,
+        num_people=num_people,
+        response_cardinality=response_cardinality,
+        dim=1,
+        imputation_model=imputation_model,
+        dtype=jnp.float64,
+    )
+
+    if imputation_model is not None:
+        try:
+            model.validate_imputation_model()
+            print(f"  {variant_name}: imputation model validation passed.")
+        except Exception as e:
+            print(f"  {variant_name}: imputation validation warning: {e}")
+
+    model_data = attach_imputation_pmfs(model, scale_data)
+
+    actual_batch_size, steps_per_epoch = compute_steps_per_epoch(num_people, batch_size)
+    print(
+        f"  ADVI batching metadata: num_people={num_people}, "
+        f"batch_size={actual_batch_size}, steps_per_epoch={steps_per_epoch}"
+    )
+
+    advi_losses = np.array([])
+    advi_params = None
+
+    if run_advi:
+        print(f"\n--- {variant_name}: IRT marginal ADVI warm-start ---")
+
+        advi_losses, advi_params = fit_marginal_advi_warmstart(
+            model=model,
+            data=model_data,
+            num_samples=advi_num_samples,
+            advi_iterations=advi_iterations,
+            learning_rate=advi_learning_rate,
+            rank=advi_rank,
+            seed=seed,
+            steps_per_epoch=steps_per_epoch,
+        )
+
+        print("  ADVI warm-start completed. EAP will be computed after MCMC.")
+
+    elif init_advi_params is not None:
+        print(
+            f"\n--- {variant_name}: using supplied ADVI params "
+            f"to initialize MCMC ---"
+        )
+        model.params = init_advi_params
+        advi_params = init_advi_params
+
+    else:
+        print(
+            f"\n--- {variant_name}: no ADVI params supplied; "
+            f"MCMC will use default initialization ---"
+        )
+
+    eap_advi = {"eap": np.array([]), "psd": np.array([])}
+
+    print(f"\n--- {variant_name}: IRT marginal MCMC ---")
+    print(
+        f"  MCMC settings: chains={num_chains}, warmup={num_warmup}, "
+        f"samples={num_samples}, step_size={step_size}, "
+        f"target_accept_prob={target_accept_prob}"
+    )
+
+    mcmc_samples = model.fit_marginal_mcmc(
+        model_data,
+        theta_grid=None,
+        num_chains=num_chains,
+        num_warmup=num_warmup,
+        num_samples=num_samples,
+        target_accept_prob=target_accept_prob,
+        step_size=step_size,
+        seed=seed + 10000,
+        verbose=True,
+    )
+
+    max_rhat = print_rhat(mcmc_samples)
+
+    if max_rhat > 1.05:
+        print(
+            f"  WARNING: {variant_name} max R-hat={max_rhat:.4f} > 1.05. "
+            "Posterior summaries from this fit should not be trusted. "
+            "Try increasing warmup/samples and lowering step_size."
+        )
+
+    eap_pre = model.compute_eap_abilities(model_data)
+    print(
+        f"  Pre-std EAP: mean={float(jnp.mean(eap_pre['eap'])):.4f}, "
+        f"std={float(jnp.std(eap_pre['eap'])):.4f}, "
+        f"PSD={float(jnp.mean(eap_pre['psd'])):.4f}"
+    )
+
+    standardize_stats = model.standardize_marginal(model_data)
+
+    eap_post = model.compute_eap_abilities(model_data)
+    print(
+        f"  Post-std EAP: mean={float(jnp.mean(eap_post['eap'])):.4f}, "
+        f"std={float(jnp.std(eap_post['eap'])):.4f}, "
+        f"PSD={float(jnp.mean(eap_post['psd'])):.4f}"
+    )
+
+    model.fit_surrogate_to_mcmc()
+
+    eap_arr = np.asarray(eap_post["eap"]).reshape(-1)
+    model.surrogate_sample["abilities"] = jnp.array(
+        eap_arr[:, np.newaxis, np.newaxis, np.newaxis]
+    )[np.newaxis, ...]
+
+    model_path = output_dir / f"grm_mcmc_{variant_name.lower()}"
+    model.save_to_disk(model_path)
+
+    save_dict = {
+        "advi_losses": np.asarray(advi_losses),
+        "advi_eap": np.asarray(eap_advi["eap"]),
+        "advi_psd": np.asarray(eap_advi["psd"]),
+        "eap": np.asarray(eap_post["eap"]),
+        "psd": np.asarray(eap_post["psd"]),
+        "eap_pre": np.asarray(eap_pre["eap"]),
+        "psd_pre": np.asarray(eap_pre["psd"]),
+        "standardize_mu": np.asarray(standardize_stats["mu"]),
+        "standardize_sigma": np.asarray(standardize_stats["sigma"]),
+        "max_rhat": np.asarray(max_rhat),
+        "advi_requested_iterations": np.asarray(advi_iterations),
+        "advi_steps_per_epoch": np.asarray(steps_per_epoch),
+        "advi_actual_steps_approx": np.asarray(len(advi_losses)),
+        "advi_batch_size": np.asarray(actual_batch_size),
+        "advi_was_run": np.asarray(bool(run_advi)),
+        "mcmc_step_size": np.asarray(step_size),
+        "mcmc_target_accept_prob": np.asarray(target_accept_prob),
+        "mcmc_num_warmup": np.asarray(num_warmup),
+        "mcmc_num_samples": np.asarray(num_samples),
+        "mcmc_num_chains": np.asarray(num_chains),
+    }
+
+    for k, v in mcmc_samples.items():
+        save_dict[k] = np.asarray(v)
+
+    save_npz(output_dir / f"mcmc_{variant_name.lower()}.npz", **save_dict)
+
+    return {
+        "model": model,
+        "data": model_data,
+        "mcmc_samples": mcmc_samples,
+        "eap": eap_to_1d(eap_post),
+        "psd": np.asarray(eap_post["psd"]),
+        "advi_losses": np.asarray(advi_losses),
+        "advi_params": advi_params,
+        "max_rhat": max_rhat,
+        "standardize_stats": standardize_stats,
+        "stats": summarize_mcmc_samples(mcmc_samples),
+        "model_path": model_path,
+        "advi_steps_per_epoch": steps_per_epoch,
+        "advi_batch_size": actual_batch_size,
+        "advi_was_run": bool(run_advi),
+        "mcmc_step_size": step_size,
+        "mcmc_target_accept_prob": target_accept_prob,
+    }
+
+
+# -----------------------------------------------------------------------------
+# Plotting
+# -----------------------------------------------------------------------------
+def _tufte(ax):
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(direction="out", length=3, width=0.5)
+    ax.spines["left"].set_linewidth(0.5)
+    ax.spines["bottom"].set_linewidth(0.5)
+
+
+def plot_forest(scale_item_keys, variant_stats, param_key, xlabel, out_path):
+    if not all(param_key in stats for stats in variant_stats.values()):
+        print(f"  Skipping {param_key} forest plot: parameter missing.")
+        return
+
+    n_items = len(scale_item_keys)
+    fig, ax = plt.subplots(figsize=(6, max(4, n_items * 0.3)))
+    y_pos = np.arange(n_items)
+    n_models = len(variant_stats)
+
+    for k, (label, stats) in enumerate(variant_stats.items()):
+        mean = np.asarray(stats[param_key]["mean"]).reshape(-1)
+        std = np.asarray(stats[param_key]["std"]).reshape(-1)
+
+        if mean.size < n_items:
+            print(
+                f"  Skipping {label} in {param_key} plot: "
+                f"expected {n_items}, got {mean.size}"
+            )
+            continue
+
+        mean = mean[:n_items]
+        std = std[:n_items]
+
+        offset = (k - n_models / 2 + 0.5) * 0.2
+
+        ax.errorbar(
+            mean,
+            y_pos + offset,
+            xerr=std,
+            fmt=MARKERS.get(label, "o"),
+            capsize=2,
+            markersize=4,
+            elinewidth=1,
+            color=COLORS.get(label, "gray"),
+            alpha=0.7,
+            label=label,
+        )
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(scale_item_keys, fontsize=max(5, 9 - n_items // 20))
+    ax.set_xlabel(xlabel)
+
+    if param_key == "discriminations":
+        ax.axvline(x=0, color="gray", linestyle="--", alpha=0.3, linewidth=0.5)
+
+    ax.invert_yaxis()
+    ax.legend(frameon=False, fontsize=9)
+    _tufte(ax)
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_ability_histogram(eap_dict, out_path):
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+
+    for label, eap in eap_dict.items():
+        ax.hist(
+            np.asarray(eap).reshape(-1),
+            bins=40,
+            histtype="step",
+            linewidth=1.5,
+            label=label,
+            color=COLORS.get(label, "gray"),
+        )
+
+    ax.set_xlabel("EAP ability")
+    ax.set_ylabel("Count")
+    ax.legend(frameon=False, fontsize=9)
+    _tufte(ax)
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_ability_corr_heatmap(abilities, scale_names, out_path, title):
+    mat = np.asarray(abilities)
+
+    if mat.ndim != 2 or mat.shape[1] < 2:
+        return
+
+    corr = np.corrcoef(mat.T)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(corr, vmin=-1, vmax=1, interpolation="nearest")
+
+    ax.set_xticks(np.arange(len(scale_names)))
+    ax.set_yticks(np.arange(len(scale_names)))
+    ax.set_xticklabels(scale_names, rotation=45, ha="right")
+    ax.set_yticklabels(scale_names)
+    ax.set_title(title)
+
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_advi_losses(loss_dict, out_path):
+    fig, ax = plt.subplots(figsize=(7, 4))
+
+    any_losses = False
+
+    for label, losses in loss_dict.items():
+        losses = np.asarray(losses)
+        if losses.size == 0:
+            continue
+
+        any_losses = True
+        ax.plot(losses, label=label, alpha=0.8)
+
+    if not any_losses:
+        plt.close(fig)
+        return
+
+    ax.set_xlabel("ADVI optimizer step")
+    ax.set_ylabel("Loss")
+    ax.legend(frameon=False)
+    ax.grid(alpha=0.25)
+    _tufte(ax)
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+# -----------------------------------------------------------------------------
+# Per-scale worker
+# -----------------------------------------------------------------------------
+def fit_one_scale_worker(task):
+    """
+    Multiprocessing-safe worker.
+
+    Each worker reloads data and the pairwise model from disk. This avoids
+    passing live JAX/TFP/model objects across processes.
+    """
+    scale_name = task["scale_name"]
+    scale_item_keys = task["scale_item_keys"]
+
+    output_path = Path(task["output_path"]).expanduser()
+    data_path = Path(task["data_path"]).expanduser()
+    item_to_scale_path = Path(task["item_to_scale_path"]).expanduser()
+    imputation_model_path = Path(task["imputation_model_path"]).expanduser()
+
+    use_ipw = task["use_ipw"]
+    target_group1_prevalence = task["target_group1_prevalence"]
+
+    print("\n" + "=" * 80)
+    print(f"Scale {scale_name} ({len(scale_item_keys)} items)")
+    print("=" * 80)
+
+    loaded = load_wdfab_data(
+        data_path=data_path,
+        item_to_scale_path=item_to_scale_path,
+        allowed_scales=task["allowed_scales"],
+    )
+
+    responses = loaded["responses"]
+    group_ids = loaded["group_ids"]
+    num_people = loaded["num_people"]
+
+    pairwise_model = load_pairwise_model(imputation_model_path)
+
+    scale_dir = output_path / f"scale_{scale_name}"
+    scale_dir.mkdir(parents=True, exist_ok=True)
+
+    scale_df = responses[scale_item_keys].copy()
+
+    scale_data = make_data_dict(
+        scale_df,
+        group_ids=group_ids if use_ipw else None,
+        target_p1=target_group1_prevalence,
+    )
+
+    baseline_res = fit_irt_mcmc_variant(
+        variant_name="Baseline",
+        scale_item_keys=scale_item_keys,
+        scale_data=scale_data,
+        num_people=num_people,
+        response_cardinality=task["response_cardinality"],
+        output_dir=scale_dir,
+        num_chains=task["num_chains"],
+        num_warmup=task["num_warmup"],
+        num_samples=task["num_samples"],
+        step_size=task["step_size"],
+        target_accept_prob=task["target_accept_prob"],
+        advi_iterations=task["advi_iterations"],
+        advi_num_samples=task["advi_num_samples"],
+        advi_learning_rate=task["advi_learning_rate"],
+        advi_rank=task["advi_rank"],
+        batch_size=task["batch_size"],
+        seed=task["seed"],
+        imputation_model=None,
+        run_advi=True,
+        init_advi_params=None,
+    )
+
+    pairwise_only = PairwiseOnlyImputationModel(mice_model=pairwise_model)
+
+    pairwise_res = fit_irt_mcmc_variant(
+        variant_name="Pairwise",
+        scale_item_keys=scale_item_keys,
+        scale_data=scale_data,
+        num_people=num_people,
+        response_cardinality=task["response_cardinality"],
+        output_dir=scale_dir,
+        num_chains=task["num_chains"],
+        num_warmup=task["num_warmup"],
+        num_samples=task["num_samples"],
+        step_size=task["pairwise_step_size"],
+        target_accept_prob=task["pairwise_target_accept_prob"],
+        advi_iterations=task["advi_iterations"],
+        advi_num_samples=task["advi_num_samples"],
+        advi_learning_rate=task["advi_learning_rate"],
+        advi_rank=task["advi_rank"],
+        batch_size=task["batch_size"],
+        seed=task["seed"] + 1,
+        imputation_model=pairwise_only,
+        run_advi=False,
+        init_advi_params=baseline_res["advi_params"],
+    )
+
+    print(f"\n--- {scale_name}: build BCM conditional on {task['bcm_source']} IRT ---")
+
+    bcm_source = baseline_res if task["bcm_source"] == "baseline" else pairwise_res
+
+    def bcm_data_factory(d=bcm_source["data"]):
+        def factory():
+            yield d
+
+        return factory
+
+    bcm_imputation = IrtMixedImputationModel(
+        irt_model=bcm_source["model"],
+        mice_model=pairwise_model,
+        data_factory=bcm_data_factory(),
+    )
+
+    bcm_dir = scale_dir / f"bcm_from_{task['bcm_source']}_irt"
+    save_bcm_model_artifact(
+        bcm_imputation,
+        bcm_dir,
+        source_model_path=bcm_source["model_path"],
+        source_name=task["bcm_source"],
+    )
+    print(f"Saved BCM model to {bcm_dir}")
+
+    variant_stats = {
+        "Baseline": baseline_res["stats"],
+        "Pairwise": pairwise_res["stats"],
+    }
+
+    variant_eap = {
+        "Baseline": baseline_res["eap"],
+        "Pairwise": pairwise_res["eap"],
+    }
+
+    if not task["skip_plots"]:
+        plot_advi_losses(
+            {
+                "Baseline": baseline_res["advi_losses"],
+                "Pairwise": pairwise_res["advi_losses"],
+            },
+            scale_dir / "advi_losses.png",
+        )
+
+        plot_forest(
+            scale_item_keys,
+            variant_stats,
+            "discriminations",
+            "Discrimination",
+            scale_dir / "forest_discriminations.png",
+        )
+
+        plot_forest(
+            scale_item_keys,
+            variant_stats,
+            "difficulties0",
+            "Difficulty first threshold",
+            scale_dir / "forest_difficulties0.png",
+        )
+
+        plot_ability_histogram(
+            variant_eap,
+            scale_dir / "ability_histograms.png",
+        )
+
+    save_npz(
+        scale_dir / "scale_summary.npz",
+        scale_name=np.array(scale_name),
+        scale_items=np.array(scale_item_keys),
+        group_ids=group_ids.astype(np.int32),
+        sample_weights=np.array(scale_data.get("sample_weights", np.ones(num_people))),
+        baseline_eap=baseline_res["eap"],
+        pairwise_eap=pairwise_res["eap"],
+        baseline_psd=baseline_res["psd"],
+        pairwise_psd=pairwise_res["psd"],
+        baseline_max_rhat=np.array(baseline_res["max_rhat"]),
+        pairwise_max_rhat=np.array(pairwise_res["max_rhat"]),
+        baseline_model_path=np.array(str(baseline_res["model_path"])),
+        pairwise_model_path=np.array(str(pairwise_res["model_path"])),
+        bcm_model_path=np.array(str(bcm_dir)),
+        bcm_source=np.array(task["bcm_source"]),
+        advi_requested_iterations=np.array(task["advi_iterations"]),
+        advi_batch_size=np.array(baseline_res["advi_batch_size"]),
+        advi_steps_per_epoch=np.array(baseline_res["advi_steps_per_epoch"]),
+        baseline_advi_was_run=np.array(baseline_res["advi_was_run"]),
+        pairwise_advi_was_run=np.array(pairwise_res["advi_was_run"]),
+        baseline_step_size=np.array(baseline_res["mcmc_step_size"]),
+        pairwise_step_size=np.array(pairwise_res["mcmc_step_size"]),
+        baseline_target_accept_prob=np.array(baseline_res["mcmc_target_accept_prob"]),
+        pairwise_target_accept_prob=np.array(pairwise_res["mcmc_target_accept_prob"]),
+    )
+
+    summary_row = {
+        "scale": scale_name,
+        "n_items": len(scale_item_keys),
+        "baseline_max_rhat": float(baseline_res["max_rhat"]),
+        "pairwise_max_rhat": float(pairwise_res["max_rhat"]),
+        "baseline_ability_sd": float(np.std(baseline_res["eap"])),
+        "pairwise_ability_sd": float(np.std(pairwise_res["eap"])),
+        "baseline_model_path": str(baseline_res["model_path"]),
+        "pairwise_model_path": str(pairwise_res["model_path"]),
+        "bcm_model_path": str(bcm_dir),
+        "bcm_source": task["bcm_source"],
+        "advi_requested_iterations": task["advi_iterations"],
+        "advi_batch_size": int(baseline_res["advi_batch_size"]),
+        "advi_steps_per_epoch": int(baseline_res["advi_steps_per_epoch"]),
+        "baseline_advi_was_run": bool(baseline_res["advi_was_run"]),
+        "pairwise_advi_was_run": bool(pairwise_res["advi_was_run"]),
+        "baseline_step_size": float(baseline_res["mcmc_step_size"]),
+        "pairwise_step_size": float(pairwise_res["mcmc_step_size"]),
+        "baseline_target_accept_prob": float(baseline_res["mcmc_target_accept_prob"]),
+        "pairwise_target_accept_prob": float(pairwise_res["mcmc_target_accept_prob"]),
+    }
+
+    result = {
+        "scale": scale_name,
+        "summary_row": summary_row,
+        "baseline_eap": baseline_res["eap"],
+        "pairwise_eap": pairwise_res["eap"],
+        "baseline_psd": baseline_res["psd"],
+        "pairwise_psd": pairwise_res["psd"],
+    }
+
+    del baseline_res
+    del pairwise_res
+    del bcm_imputation
+    del pairwise_model
+    gc.collect()
+
+    return result
+
+
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Multiscale IRT marginal MCMC initialized from short baseline ADVI, "
+            "with baseline and pairwise-imputed IRT fits. Pairwise MCMC reuses "
+            "baseline ADVI params to avoid expensive pairwise ADVI. BCM is built "
+            "only after fitted standardized IRT. Uses IPW. Can run scales in parallel."
+        )
+    )
+    parser.add_argument("--output-dir", default=str(OUTPUT_PATH_DEFAULT))
+    parser.add_argument("--data-path", default=str(DATA_PATH_DEFAULT))
+    parser.add_argument("--item-to-scale-path", default=str(ITEM_TO_SCALE_PATH_DEFAULT))
+    parser.add_argument("--imputation-model-path", default=str(IMPUTATION_MODEL_PATH_DEFAULT))
+
+    parser.add_argument("--batch-size", type=int, default=512)
+    parser.add_argument("--n-workers", type=int, default=1)
+
+    parser.add_argument("--num-chains", type=int, default=4)
+    parser.add_argument("--num-warmup", type=int, default=3000)
+    parser.add_argument("--num-samples", type=int, default=2000)
+
+    parser.add_argument(
+        "--step-size",
+        type=float,
+        default=0.002,
+        help="Baseline MCMC initial step size.",
+    )
+    parser.add_argument(
+        "--pairwise-step-size",
+        type=float,
+        default=0.0005,
+        help="Pairwise-imputed MCMC initial step size. Usually needs to be smaller.",
+    )
+    parser.add_argument(
+        "--target-accept-prob",
+        type=float,
+        default=0.95,
+        help="Baseline MCMC target acceptance probability.",
+    )
+    parser.add_argument(
+        "--pairwise-target-accept-prob",
+        type=float,
+        default=0.98,
+        help="Pairwise-imputed MCMC target acceptance probability.",
+    )
+
+    parser.add_argument(
+        "--advi-iterations",
+        type=int,
+        default=100,
+        help="Approximate total baseline ADVI optimizer iterations used only for MCMC warm-start.",
+    )
+    parser.add_argument("--advi-num-samples", type=int, default=32)
+    parser.add_argument("--advi-learning-rate", type=float, default=0.00051)
+    parser.add_argument("--advi-rank", type=int, default=0)
+
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--use-ipw", action="store_true", default=True)
+    parser.add_argument("--no-ipw", action="store_true")
+    parser.add_argument("--n-top-features", type=int, default=30)
+    parser.add_argument("--refit-imputer", action="store_true")
+    parser.add_argument("--skip-plots", action="store_true")
+    parser.add_argument(
+        "--bcm-source",
+        choices=["baseline", "pairwise"],
+        default="pairwise",
+        help="Which already-fitted standardized IRT model to condition BCM on.",
+    )
+    args = parser.parse_args()
+
+    output_path = Path(args.output_dir).expanduser()
+    data_path = Path(args.data_path).expanduser()
+    item_to_scale_path = Path(args.item_to_scale_path).expanduser()
+    imputation_model_path = Path(args.imputation_model_path).expanduser()
+
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    allowed_scales = ["BM", "UBF", "FMF", "CM", "ME", "RS", "SR", "CC"]
+
+    loaded = load_wdfab_data(
+        data_path=data_path,
+        item_to_scale_path=item_to_scale_path,
+        allowed_scales=allowed_scales,
+    )
+
+    responses = loaded["responses"]
+    group_ids = loaded["group_ids"]
+    item_keys = loaded["item_keys"]
+    scale_item_keys_by_name = loaded["scale_item_keys_by_name"]
+    num_people = loaded["num_people"]
+
+    print(f"Number of people: {num_people}")
+    print(f"Items retained: {len(item_keys)}")
+    print(f"Sample prevalence group=1: {np.mean(group_ids == 1):.4f}")
+    print(f"Target prevalence group=1: {TARGET_GROUP1_PREVALENCE:.4f}")
+
+    use_ipw = args.use_ipw and not args.no_ipw
+
+    base_data = make_data_dict(
+        responses[item_keys],
+        group_ids=group_ids if use_ipw else None,
+        target_p1=TARGET_GROUP1_PREVALENCE,
+    )
+
+    if use_ipw:
+        ess = effective_sample_size(base_data["sample_weights"])
+        print(
+            f"IPW weights: mean={base_data['sample_weights'].mean():.4f}, "
+            f"min={base_data['sample_weights'].min():.4f}, "
+            f"max={base_data['sample_weights'].max():.4f}, "
+            f"ESS={ess:.1f}/{num_people}"
+        )
+
+    if imputation_model_path.exists() and not args.refit_imputer:
+        print(f"Shared pairwise imputation model exists: {imputation_model_path}")
+    else:
+        print("Fitting shared pairwise stacking imputation model before scale fits...")
+
+        pairwise_model = PairwiseOrdinalStackingModel(
+            prior_scale=1.0,
+            pathfinder_num_samples=100,
+            pathfinder_maxiter=50,
+            batch_size=512,
+            verbose=True,
+        )
+
+        pairwise_model.fit(
+            responses[item_keys],
+            n_top_features=min(args.n_top_features, len(item_keys)),
+            n_jobs=1,
+            seed=args.seed,
+        )
+
+        save_pairwise_model(pairwise_model, imputation_model_path)
+        print(f"Saved shared pairwise imputation model to {imputation_model_path}")
+
+        del pairwise_model
+        gc.collect()
+
+    tasks = []
+    present_scales = []
+
+    for dim_idx, scale_name in enumerate(allowed_scales):
+        scale_item_keys = scale_item_keys_by_name[scale_name]
+
+        if len(scale_item_keys) == 0:
+            print(f"\nSkipping scale {scale_name}: no items found.")
+            continue
+
+        present_scales.append(scale_name)
+
+        tasks.append(
+            {
+                "scale_name": scale_name,
+                "scale_item_keys": scale_item_keys,
+                "output_path": str(output_path),
+                "data_path": str(data_path),
+                "item_to_scale_path": str(item_to_scale_path),
+                "imputation_model_path": str(imputation_model_path),
+                "allowed_scales": allowed_scales,
+                "use_ipw": use_ipw,
+                "target_group1_prevalence": TARGET_GROUP1_PREVALENCE,
+                "response_cardinality": RESP_CARDINALITY,
+                "batch_size": args.batch_size,
+                "num_chains": args.num_chains,
+                "num_warmup": args.num_warmup,
+                "num_samples": args.num_samples,
+                "step_size": args.step_size,
+                "pairwise_step_size": args.pairwise_step_size,
+                "target_accept_prob": args.target_accept_prob,
+                "pairwise_target_accept_prob": args.pairwise_target_accept_prob,
+                "advi_iterations": args.advi_iterations,
+                "advi_num_samples": args.advi_num_samples,
+                "advi_learning_rate": args.advi_learning_rate,
+                "advi_rank": args.advi_rank,
+                "seed": args.seed + 100 * dim_idx + 1,
+                "skip_plots": args.skip_plots,
+                "bcm_source": args.bcm_source,
+            }
+        )
+
+    all_baseline_eap = {}
+    all_pairwise_eap = {}
+    all_baseline_psd = {}
+    all_pairwise_psd = {}
+    scale_summary_rows = []
+
+    if args.n_workers <= 1:
+        print("Running scales sequentially.")
+        for task in tasks:
+            result = fit_one_scale_worker(task)
+            scale = result["scale"]
+            scale_summary_rows.append(result["summary_row"])
+            all_baseline_eap[scale] = result["baseline_eap"]
+            all_pairwise_eap[scale] = result["pairwise_eap"]
+            all_baseline_psd[scale] = result["baseline_psd"]
+            all_pairwise_psd[scale] = result["pairwise_psd"]
+    else:
+        print(
+            f"Running up to {args.n_workers} scales in parallel. "
+            "Use cautiously: each worker is memory-heavy."
+        )
+        with ProcessPoolExecutor(max_workers=args.n_workers) as executor:
+            future_to_scale = {
+                executor.submit(fit_one_scale_worker, task): task["scale_name"]
+                for task in tasks
+            }
+
+            for future in as_completed(future_to_scale):
+                scale_name = future_to_scale[future]
+                try:
+                    result = future.result()
+                except Exception as e:
+                    print(f"ERROR fitting scale {scale_name}: {e}")
+                    raise
+
+                scale = result["scale"]
+                scale_summary_rows.append(result["summary_row"])
+                all_baseline_eap[scale] = result["baseline_eap"]
+                all_pairwise_eap[scale] = result["pairwise_eap"]
+                all_baseline_psd[scale] = result["baseline_psd"]
+                all_pairwise_psd[scale] = result["pairwise_psd"]
+
+    completed_scales = [
+        s for s in present_scales if s in all_baseline_eap and s in all_pairwise_eap
+    ]
+
+    if len(completed_scales) > 0:
+        baseline_matrix = np.column_stack(
+            [all_baseline_eap[s] for s in completed_scales]
+        )
+        pairwise_matrix = np.column_stack(
+            [all_pairwise_eap[s] for s in completed_scales]
+        )
+
+        print("\n" + "=" * 80)
+        print("Multi-scale ability summary")
+        print("=" * 80)
+        print(f"Completed scales: {completed_scales}")
+        print(f"Baseline matrix: {baseline_matrix.shape}")
+        print(f"Pairwise matrix: {pairwise_matrix.shape}")
+        print(f"Baseline per-dim means: {np.mean(baseline_matrix, axis=0)}")
+        print(f"Baseline per-dim SDs:   {np.std(baseline_matrix, axis=0)}")
+
+        if baseline_matrix.shape[1] >= 2 and not args.skip_plots:
+            plot_ability_corr_heatmap(
+                baseline_matrix,
+                completed_scales,
+                output_path / "ability_corr_baseline.png",
+                "Baseline ability correlation",
+            )
+
+            plot_ability_corr_heatmap(
+                pairwise_matrix,
+                completed_scales,
+                output_path / "ability_corr_pairwise.png",
+                "Pairwise ability correlation",
+            )
+
+        save_npz(
+            output_path / "abilities_combined.npz",
+            present_scales=np.array(completed_scales),
+            baseline_abilities=baseline_matrix,
+            pairwise_abilities=pairwise_matrix,
+            group_ids=group_ids.astype(np.int32),
+            sample_weights=np.array(base_data.get("sample_weights", np.ones(num_people))),
+            **{f"baseline_eap_{s}": all_baseline_eap[s] for s in completed_scales},
+            **{f"pairwise_eap_{s}": all_pairwise_eap[s] for s in completed_scales},
+            **{f"baseline_psd_{s}": all_baseline_psd[s] for s in completed_scales},
+            **{f"pairwise_psd_{s}": all_pairwise_psd[s] for s in completed_scales},
+        )
+
+        summary_df = pd.DataFrame(scale_summary_rows)
+        summary_df = summary_df.sort_values("scale")
+        summary_df.to_csv(output_path / "scale_summary.csv", index=False)
+
+        print(f"\nSaved combined outputs to {output_path / 'abilities_combined.npz'}")
+        print(f"Saved summary CSV to {output_path / 'scale_summary.csv'}")
+
+
+if __name__ == "__main__":
+    main()
+
+
