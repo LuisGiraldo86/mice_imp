@@ -461,6 +461,18 @@ missing-data problem and no per-design sampler tuning will fix it. Masking
 adds adaptation instability on top (note the two masked chains disagree on
 step size by 3.4x while the CD chains agree).
 
+**In the design frames it is worse.** Measured 2026-08-21 on the delivered
+files, identically across all three designs: `DA061` and `DA068` each have
+**2** responses in one category, `DA053` has 5, and 8–9 items (full) or 5–6
+(nobike) fall below 20. These are the frames we actually fit, so these are
+the numbers that matter:
+
+| design | items with a category < 20 (full / nobike) | worst |
+|---|---|---|
+| CommonItem | 8 / 5 | `DA061` and `DA068`, 2 responses |
+| Standard | 9 / 6 | same |
+| Binterlaced | 9 / 6 | same |
+
 `cm_preflight.py` check 2b now FAILs below 20 responses in any category and
 WARNs below 40. Options, none free: collapse the sparse category (but
 `response_cardinality` is a scalar, so it affects every item, and the mirt
@@ -500,13 +512,19 @@ method, and needs saying in the write-up.
 
 ## How to work here
 
-1. `cm_preflight.py` must pass before any fitting. Run it on the CD export —
-   on a masked design file it detects `grp_final`, prints the form layout,
-   and says so, because checks 3–7 then describe the design rather than the
-   data contract.
+1. `cm_preflight.py` must pass before any fitting. **Run it on each design
+   file** — those are the frames we fit, and since the CD calibration moved
+   to the coauthor (see "Scope"), CD is no longer part of this pipeline.
+   Preflight detects `grp_final`, prints the form layout, and notes that
+   checks 3–7 then describe the design rather than the data contract. That
+   is the right reading here: checks 1, 2 and 2b are the contract, and 2b
+   is the one that gates the runs.
 
    ```
-   python -m mice_imp.cm_preflight data/Datenexport_test_mar2026.dta
+   for d in CommonItem Standard Binterlaced; do
+     python -m mice_imp.cm_preflight \
+       data_wdfab/WDFAB_ExperimentalData_CM${d}_Jul2026.dta
+   done
    ```
 
 2. Smoke-test `cm_bayes_arms.py` with `--num-warmup 200 --num-samples 200`
