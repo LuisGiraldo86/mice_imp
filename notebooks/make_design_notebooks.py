@@ -442,7 +442,7 @@ non-converged arm cannot be picked up silently."""),
 
         code('''from mice_imp.export_estimates import export
 
-export(OUTPUT_DIR, design=f"{DESIGN.lower()}_{ITEMSET}",
+export(OUTPUT_DIR, design=DESIGN.lower(), itemset=ITEMSET,
        source=DATA_PATH, include_d=True)'''),
     ]
 

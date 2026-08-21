@@ -31,6 +31,23 @@ the test scale. CM was administered to everyone, so it has complete data
   (target 1.0); intercepts by random-intercept (item) models. Stratified by
   gender, age group, CD theta quintile, self-rated health.
 
+## Scope of the work in this repo (set 2026-08-21)
+
+**This repo produces the Bayesian arms and hands over estimates. It does not
+run the CD comparison.** Six runs — 3 designs x 2 item sets — each giving
+`birt`, `bmi` and the `flat` control, exported as `item_parameters.csv` and
+`theta.csv`. The coauthor synthesises: CD reference, the mirt/plink arms,
+and every theta-vs-CD, slope, intercept and stratified comparison.
+
+So the R arms and the CD calibration are **out of scope here**, and open
+issue F (which CD source) is not ours to decide — but the answer still has
+to travel with the handover, see "Handover" below, because the estimates are
+only interpretable against a CD calibrated the same way.
+
+What stays in scope and still blocks: open issue E (sparse categories -- it
+is our sampler that diverges), the B-MI fallback rate (fact 3), and the ADVI
+warm-start check (fact 17).
+
 Target: special issue in *Advances in Patient Reported Outcomes*.
 Josh Chang (NIH/Mederrata, author of bayesianquilts) is a coauthor — ask him
 directly when something about the library is ambiguous.
@@ -72,6 +89,31 @@ python -m mice_imp.export_estimates results/binterlaced/full \
     --source data_wdfab/WDFAB_ExperimentalData_CMBinterlaced_Jul2026.dta \
     --include-d
 ```
+
+### Handover
+
+The CSVs are the deliverable, so they must be readable without this repo.
+Every row carries `design`, `itemset`, `arm` and `max_rhat`; thetas are keyed
+on `id_work`. Send these five facts with them or the synthesis will be wrong
+in ways that look fine:
+
+1. **`Bike_2` must be `Bike_2_r_cor` on their side too.** The CD export does
+   not carry the corrected column (fact 16). If their CD calibration uses raw
+   `Bike_2` or `Bike_2_r`, that item's parameters are comparing two different
+   codings, and B-MI's imputation PMFs are over permuted categories.
+2. **Each run is standardised independently** (`standardize_marginal`, theta
+   ~ N(0,1) within its own run). Thetas are not on a common metric across
+   designs, item sets, or against their CD fit until they put them there.
+   Any slope-against-CD analysis has to handle this explicitly.
+3. **`flat` is a noise floor, not a method.** It targets the same posterior
+   as `birt` by construction (fact 2). It must not appear as a third arm in
+   any results table; it is the resolution limit for the B-MI effect.
+4. **Parameter conventions** — `a_i(theta - b_ik)`, thresholds already
+   `cumsum`-ed, `d_ik = -a_i*b_ik` supplied alongside, and the exported `d`
+   will not reproduce as `-a*b` from the exported columns (fact 5, and the
+   note below).
+5. **The B-MI fallback rate for that run**, from the fit log. A null B-MI
+   result is uninterpretable without it (fact 3).
 
 `--source` is what attaches `id_work` and `grp_final`; without it the key is
 a bare row index. Both CSVs carry `max_rhat` per arm so a non-converged arm
@@ -425,7 +467,28 @@ arms must do the same or the comparison stops being like-for-like); tighten
 the threshold prior and argue prior sensitivity; or document those item
 parameters as not interpretable. **Decide before any full run.**
 
-**F. CD is not complete.** No file in the repo has complete CM data — the
+**F. OUT OF SCOPE HERE (2026-08-21) — the CD reference is the coauthor's.**
+This repo no longer fits CD; see "Scope of the work in this repo". The
+analysis below stands and should be sent to them, because whichever source
+they pick changes what our estimates are compared against. Measured on the
+27-item scale, and note the design masking is a **strict overlay** on CD --
+all 105 administered (design, form, item) cells have exactly CD's observed
+respondents, so ~7.9% baseline nonresponse sits inside every arm's data and
+no arm ever sees complete responses:
+
+| CD source | N | CM missing | complete cases | selection vs rest |
+|---|---|---|---|---|
+| main, all rows | 1363 | 8.33% | 798 (58.5%) | — |
+| main, complete cases | 798 | 0% | 798 | -0.119 SD |
+| `_2` subset | 642 | 1.67% | 586 (91.3%) | **-0.280 SD** |
+
+`_2` is worse than it looks: its selection is associated with CM score at
+-0.280 SD, twice the complete-case selection, and the rule is still unknown
+-- not booklet (`Bogen`), not date (`Zeitstempel`), not site (`H_14`, no
+code wholly in or out), not questionnaire-wide completeness. Recommend the
+full 1363 and a complete-case sensitivity check on item parameters only.
+
+**F (original). CD is not complete.** No file in the repo has complete CM data — the
 design files are all masked, and `_2` is a subset of the main export, not an
 unmasked alternative. Three options, none free:
 

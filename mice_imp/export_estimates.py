@@ -58,7 +58,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mice_imp.wdfab_io import FORM_KEY, read_dta  # noqa: E402
+from mice_imp.wdfab_io import FORM_KEY, ITEM_SETS, read_dta  # noqa: E402
 
 ARMS = ("birt", "bmi", "flat")
 RHAT_LIMIT = 1.05
@@ -93,7 +93,8 @@ def _as_int_if_integral(col: pd.Series) -> np.ndarray | pd.Series:
     return values
 
 
-def item_table(arms: dict[str, dict], design: str, include_d: bool) -> pd.DataFrame:
+def item_table(arms: dict[str, dict], design: str, itemset: str,
+               include_d: bool) -> pd.DataFrame:
     """One row per (arm, item), thresholds widened to b1..bK-1."""
     rows = []
     for arm, res in arms.items():
@@ -101,6 +102,7 @@ def item_table(arms: dict[str, dict], design: str, include_d: bool) -> pd.DataFr
         for i, item in enumerate(res["item_keys"]):
             row = {
                 "design": design,
+                "itemset": itemset,
                 "arm": arm,
                 "item": item,
                 "item_order": i,
@@ -122,7 +124,7 @@ def item_table(arms: dict[str, dict], design: str, include_d: bool) -> pd.DataFr
 
 
 def theta_table(
-    arms: dict[str, dict], design: str, source: Path | None
+    arms: dict[str, dict], design: str, itemset: str, source: Path | None
 ) -> pd.DataFrame:
     """One row per respondent, one theta/SE column pair per arm."""
     n = {arm: res["eap"].size for arm, res in arms.items()}
@@ -130,7 +132,8 @@ def theta_table(
         raise ValueError(f"arms disagree on N: {n}")
     n_rows = next(iter(n.values()))
 
-    out = pd.DataFrame({"design": np.repeat(design, n_rows)})
+    out = pd.DataFrame({"design": np.repeat(design, n_rows),
+                        "itemset": np.repeat(itemset, n_rows)})
     if source is not None:
         src = read_dta(source)
         if len(src) != n_rows:
@@ -155,11 +158,20 @@ def theta_table(
 def export(
     results_dir: Path,
     design: str | None = None,
+    itemset: str | None = None,
     source: Path | None = None,
     arms: tuple[str, ...] = ARMS,
     include_d: bool = False,
 ) -> tuple[Path, Path]:
-    design = design or results_dir.name
+    # Results live at results/<design>/<itemset>/, so the directory name alone
+    # is "full" or "nobike" -- not a design. Fall back to the parent when the
+    # leaf names an item set, so the CLI default cannot silently label every
+    # design "full".
+    if itemset is None:
+        itemset = results_dir.name if results_dir.name in ITEM_SETS else ""
+    if design is None:
+        design = (results_dir.parent.name if results_dir.name in ITEM_SETS
+                  else results_dir.name)
 
     loaded = {}
     for arm in arms:
@@ -183,8 +195,8 @@ def export(
                 file=sys.stderr,
             )
 
-    items = item_table(loaded, design, include_d)
-    thetas = theta_table(loaded, design, source)
+    items = item_table(loaded, design, itemset, include_d)
+    thetas = theta_table(loaded, design, itemset, source)
 
     item_path = results_dir / "item_parameters.csv"
     theta_path = results_dir / "theta.csv"
@@ -200,7 +212,11 @@ def main():
     ap = argparse.ArgumentParser(
         description="Export a/b item parameters and person thetas to CSV.")
     ap.add_argument("results_dir", type=Path,
-                    help="results/<design>, holding {birt,bmi,flat}.npz")
+                    help="results/<design>/<itemset>, holding "
+                         "{birt,bmi,flat}.npz")
+    ap.add_argument("--itemset", default=None,
+                    help="item-set label (default: directory name if it names "
+                         "one of %s)" % ", ".join(sorted(ITEM_SETS)))
     ap.add_argument("--design", default=None,
                     help="design label for the CSVs (default: directory name)")
     ap.add_argument("--source", type=Path, default=None,
@@ -213,6 +229,7 @@ def main():
     export(
         args.results_dir,
         design=args.design,
+        itemset=args.itemset,
         source=args.source,
         arms=tuple(a.strip() for a in args.arms.split(",") if a.strip()),
         include_d=args.include_d,
