@@ -158,20 +158,21 @@ on every unmasked cell).
 | file | role |
 |---|---|
 | `data/Datenexport_test_mar2026.dta` | CD reference, N = 1363, 217 cols |
-| `data/Datenexport_test_mar2026_2.dta` | **subset**, not an alternative — see below |
+| `data/Datenexport_test_mar2026_2.dta` | **not used** — see below |
 | `data_wdfab/WDFAB_ExperimentalData_CM{CommonItem,Standard,Binterlaced}_Jul2026.dta` | masked designs, 128 cols each |
 
-`_2` holds 642 of the same 1363 respondents with byte-identical values on the
-CM items (verified NaN-aware: 0 differing cells). It is only 1.66% missing
-with 586 complete cases, so it looks attractive as a CD source — but the
-selection rule for those 642 is unknown. Find out before using it.
+`_2` is **out of scope (2026-08-21)**. It is a 642-row subset of the main
+export with byte-identical values, selected on having answered the CM items
+by a rule nobody has been able to state, and its respondents score 0.28 SD
+lower on community mobility than the rest. It is not a cleaner CD source and
+it is not an alternative dataset. Do not reopen it.
 
 The `_small` variants were deleted on 2026-08-21. They were **not** subsets:
 same 1363 rows and columns, but an earlier reduced-anchor variant with only
 `DA054` / `DA058` / `DA066` multi-form (CommonItem overlap 3/3/3, not
 6/6/6). If they reappear, do not treat them as a smaller sample.
 
-All three design files share one 127-column schema and cover exactly the CD
+All three design files share one 128-column schema and cover exactly the CD
 respondent set (`id_work` sets identical). **None of them is complete**: in
 every design each of the 26 CM items is masked in at least one form.
 
@@ -480,29 +481,15 @@ no arm ever sees complete responses:
 |---|---|---|---|---|
 | main, all rows | 1363 | 8.33% | 798 (58.5%) | — |
 | main, complete cases | 798 | 0% | 798 | -0.119 SD |
-| `_2` subset | 642 | 1.67% | 586 (91.3%) | **-0.280 SD** |
 
-`_2` is worse than it looks: its selection is associated with CM score at
--0.280 SD, twice the complete-case selection, and the rule is still unknown
--- not booklet (`Bogen`), not date (`Zeitstempel`), not site (`H_14`, no
-code wholly in or out), not questionnaire-wide completeness. Recommend the
-full 1363 and a complete-case sensitivity check on item parameters only.
+Recommend the full 1363, with a complete-case sensitivity check on item
+parameters only. (`_2` was the third candidate and is out of scope -- see
+"Data files".)
 
-**F (original). CD is not complete.** No file in the repo has complete CM data — the
-design files are all masked, and `_2` is a subset of the main export, not an
-unmasked alternative. Three options, none free:
-
-| CD source | N | CM missing | complete cases |
-|---|---|---|---|
-| main export, all rows | 1363 | 8.2% | 809 (59.4%) |
-| main export, complete cases only | 809 | 0% | 809 |
-| `_2` subset | 642 | 1.7% | 586 |
-
-Calibrating on all 1363 with FIML makes the CD reference itself a
-missing-data method, muddying what it is a reference *for*. Restricting to
-809 costs 41% of the sample and selects on completeness. `_2` is cleanest
-per-row but is 47% of the sample under an unknown selection rule.
-**Decide and document before any fitting.**
+The tension is real either way and belongs in the write-up: calibrating on
+all 1363 makes the CD reference itself a missing-data method, while
+restricting to the complete cases costs 41% of the sample and selects on
+completeness. There is no third option.
 
 **G. Confirm the Standard design's chained linking is intended.** Forms 2
 and 3 share zero items by construction (see "Data files"), so Stocking-Lord
