@@ -357,6 +357,21 @@ downstream — `to_mirt_convention` centralises them."""),
     **{f"{n}_d_mean": res["item_params"]["d_mean"] for n, res in results.items()},
 )
 print(f"wrote {OUTPUT_DIR / 'summary.npz'}")'''),
+
+        md("""### CSV for coauthors
+
+`item_parameters.csv` — one row per (arm, item): `a`, `b1..b4` and their
+posterior SDs. `theta.csv` — one row per respondent, keyed on `id_work`,
+with an EAP theta and its PSD per arm.
+
+`b` is the location parameterisation `a_i(theta - b_ik)`, which is what
+"a and b1..b4" normally means; `--include-d` / `include_d=True` adds mirt's
+intercepts alongside. Both files carry `max_rhat` per arm, so a
+non-converged arm cannot be picked up silently."""),
+
+        code('''from mice_imp.export_estimates import export
+
+export(OUTPUT_DIR, design=DESIGN.lower(), source=DATA_PATH, include_d=True)'''),
     ]
 
     return {
