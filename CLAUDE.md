@@ -361,7 +361,9 @@ correction is a deterministic permutation of `Bike_2`:
     1 -> 4    2 -> 3    3 -> 2    4 -> 1    5 -> 5
 
 Categories 1..4 are reversed; category 5 stays put, because it is not the
-top of that continuum. Mean score on the other 26 items by raw `Bike_2`
+top of that continuum. **The coauthor confirmed on 2026-08-21 that this is
+the intended recoding**, with the wording of category 5 still to be
+double-checked on their side. Mean score on the other 26 items by raw `Bike_2`
 category is 2.21 / 1.98 / 1.71 / 1.57 for 1..4 — decreasing — and **3.29**
 for category 5. So the flat `6 - x` reversal that produced `Bike_2_r` sent
 those 303 respondents to the bottom of the scale.
