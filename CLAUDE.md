@@ -439,8 +439,9 @@ plan for it in the directory layout from the start. Note the delivered
 design files are one realisation each — replicating means regenerating
 masks, which needs the generating script from the collaborators.
 
-**E. REOPENED (2026-08-13) — categories are present but several are nearly
-empty.** All 27 items do show exactly 5 distinct categories, so the scalar
+**E. DEFERRED (2026-08-21) — not being raised with the coauthor yet; the
+analysis below stands for when it is. REOPENED (2026-08-13) — categories are
+present but several are nearly empty.** All 27 items do show exactly 5 distinct categories, so the scalar
 `response_cardinality=5` is formally correct. That was the shallow reading.
 On **CD**, category 3 holds 10 responses for `DA068`, 13 for `DA053`, 15 for
 `DA061`; seven items have a category under 40. Under a design that gives an
