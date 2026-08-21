@@ -1,0 +1,7 @@
+# Vendored upstream checkout -- 120M, and it is pinned in requirements.txt
+# instead (mederrata/bayesianquilts @ 7a29ec5). Do not commit it here.
+bayesianquilts/
+
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/

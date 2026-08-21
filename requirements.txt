@@ -1,0 +1,5 @@
+# bayesianquilts is vendored locally (see .gitignore) rather than committed.
+# The pin is load-bearing: every API call in mice_imp/cm_bayes_arms.py was
+# verified against this exact commit (CLAUDE.md, "Environment"), and
+# mice_imp/compat.py shims the batchless-ADVI training_loop as it exists here.
+bayesianquilts @ git+https://github.com/mederrata/bayesianquilts@7a29ec5
