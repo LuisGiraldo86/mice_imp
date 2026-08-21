@@ -45,11 +45,32 @@ mice_imp/
   wdfab_io.py        # .dta loading, item keys, 1..K -> 0..K-1 recode
   cm_preflight.py    # data contract checks — RUN FIRST
   cm_bayes_arms.py   # B-IRT / B-MI / flat-control arms
+  export_estimates.py  # npz -> item_parameters.csv / theta.csv for coauthors
 notebooks/
   make_design_notebooks.py   # GENERATOR — edit this, not the .ipynb files
   cm_{commonitem,standard,binterlaced}.ipynb   # generated drivers
 results/<design>/    # {birt,bmi,flat}.npz, noise_floor.json, summary.npz
+                     # + item_parameters.csv, theta.csv
 ```
+
+`export_estimates.py` is the coauthor-facing deliverable: `a` and `b1..b4`
+per (arm, item), and an EAP theta + PSD per respondent keyed on `id_work`.
+It reads the arm `.npz` and does no computation of its own beyond reshaping
+— everything is already post-`standardize_marginal` and post-`cumsum`.
+
+```
+python -m mice_imp.export_estimates results/binterlaced \
+    --source data_wdfab/WDFAB_ExperimentalData_CMBinterlaced_Jul2026.dta \
+    --include-d
+```
+
+`--source` is what attaches `id_work` and `grp_final`; without it the key is
+a bare row index. Both CSVs carry `max_rhat` per arm so a non-converged arm
+cannot be picked up silently, and the exporter warns on stderr above 1.05.
+Note the exported `d` will not reproduce as `-a * b` from the exported
+columns: each is a posterior mean of its own quantity, and the mean of a
+product is not the product of the means (~0.02 apart here). Do not
+"fix" it.
 
 **The three design notebooks are generated.** They are thin drivers — set a
 design, call into `mice_imp/`, plot — and they are byte-identical apart from
@@ -333,8 +354,34 @@ plan for it in the directory layout from the start. Note the delivered
 design files are one realisation each — replicating means regenerating
 masks, which needs the generating script from the collaborators.
 
-**E. RESOLVED (2026-08-13).** All 26 items show exactly 5 categories, so the
-scalar `response_cardinality=5` is correct.
+**E. REOPENED (2026-08-13) — categories are present but several are nearly
+empty.** All 26 items do show exactly 5 distinct categories, so the scalar
+`response_cardinality=5` is formally correct. That was the shallow reading.
+On **CD**, category 3 holds 10 responses for `DA068`, 13 for `DA053`, 15 for
+`DA061`; seven items have a category under 40. Under a design that gives an
+item to one form those counts drop to ~2.
+
+A GRM estimates two thresholds around every interior category. With a
+handful of respondents in it, both are close to unidentified, the posterior
+develops a flat ridge, and NUTS diverges — which surfaces as an R-hat
+failure far from its cause. Measured with `birt`, 2 chains, 500 warmup:
+
+| frame | non-divergent ratio | adapted step size |
+|---|---|---|
+| CD (8.2% missing) | 0.200 / 0.140 | 2.93e-2 / 2.85e-2 |
+| Binterlaced (62% missing) | 0.160 / 0.025 | 2.83e-3 / 9.75e-3 |
+
+**CD diverges as badly as the masked designs**, so this is not a
+missing-data problem and no per-design sampler tuning will fix it. Masking
+adds adaptation instability on top (note the two masked chains disagree on
+step size by 3.4x while the CD chains agree).
+
+`cm_preflight.py` check 2b now FAILs below 20 responses in any category and
+WARNs below 40. Options, none free: collapse the sparse category (but
+`response_cardinality` is a scalar, so it affects every item, and the mirt
+arms must do the same or the comparison stops being like-for-like); tighten
+the threshold prior and argue prior sensitivity; or document those item
+parameters as not interpretable. **Decide before any full run.**
 
 **F. CD is not complete.** No file in the repo has complete CM data — the
 design files are all masked, and `_2` is a subset of the main export, not an
