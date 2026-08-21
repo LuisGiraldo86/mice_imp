@@ -13,8 +13,8 @@ the test scale. CM was administered to everyone, so it has complete data
   reliability over theta in [-6, 6] from the CD graded response model.
   **The masked frames already exist** — see "Data files" below; do not
   regenerate them.
-- **Scale:** 26 items (20 adapted `DA*` + 6 `Bike_*`). Bike_2 is excluded;
-  see fact 15.
+- **Scale:** 27 items (20 adapted `DA*` + 7 `Bike_*`). Bike_2 enters as
+  `Bike_2_r_cor`, the corrected recoding shipped 2026-08-21; see fact 16.
 - **Approaches (5) + reference:** CD (reference), FIML, MG-IRT, Stocking-Lord
   linking, B-IRT, B-MI.
 - **Model:** graded response model (GRM) throughout.
@@ -103,14 +103,17 @@ on every unmasked cell).
 |---|---|
 | `data/Datenexport_test_mar2026.dta` | CD reference, N = 1363, 217 cols |
 | `data/Datenexport_test_mar2026_2.dta` | **subset**, not an alternative — see below |
-| `data_wdfab/WDFAB_ExperimentalData_CM{CommonItem,Standard,Binterlaced}_Jul2026.dta` | masked designs, 127 cols each |
+| `data_wdfab/WDFAB_ExperimentalData_CM{CommonItem,Standard,Binterlaced}_Jul2026.dta` | masked designs, 128 cols each |
 
 `_2` holds 642 of the same 1363 respondents with byte-identical values on the
 CM items (verified NaN-aware: 0 differing cells). It is only 1.66% missing
 with 586 complete cases, so it looks attractive as a CD source — but the
 selection rule for those 642 is unknown. Find out before using it.
 
-The `_small` variants are subsets — the full files are the ones to use.
+The `_small` variants are **not** subsets — same 1363 rows, same columns.
+They are an earlier, reduced-anchor variant: only `DA054` / `DA058` /
+`DA066` are multi-form, so CommonItem overlap is 3/3/3 rather than 6/6/6.
+Use the full files.
 
 All three design files share one 127-column schema and cover exactly the CD
 respondent set (`id_work` sets identical). **None of them is complete**: in
@@ -120,15 +123,15 @@ Form assignment is `grp_final` (1/2/3, n = 455/454/454). Masking is
 **deterministic per form**: within a form every item is either fully masked
 or administered, and the only within-form variation is the baseline item
 nonresponse. So MG-IRT groups on `grp_final` coherently. Administered items
-per form, after excluding Bike_2:
+per form:
 
-The three designs use the **same six anchors and the same 20 single-form
-items** throughout. The 20 non-anchors sit in exactly 1 of 3 forms in every
-design. The designs differ *only* in how the anchors are allocated:
+The three designs use the **same six anchors and the same 21 single-form
+items** (7 per form) throughout. The 21 non-anchors sit in exactly 1 of 3
+forms in every design. The designs differ *only* in how the anchors are allocated:
 
 | design | anchors per form | overlap 1&2 / 1&3 / 2&3 | items per form |
 |---|---|---|---|
-| CommonItem | all 6 in all 3 forms | 6 / 6 / 6 | 13 / 13 / 12 |
+| CommonItem | all 6 in all 3 forms | 6 / 6 / 6 | 13 / 13 / 13 |
 | Standard | all 6 in form 1; 3 each in forms 2, 3 | 3 / 3 / **0** | 13 / 10 / 10 |
 | Binterlaced | 2 per form-pair, each anchor in a different pair | 2 / 2 / 2 | 11 / 11 / 11 |
 
@@ -287,22 +290,44 @@ Two silent failures, both closed by `wdfab_io.py`:
   the range and shifts explicitly, raising rather than silently shifting
   something unexpected.
 
-### 16. Bike_2 is excluded — one item, two columns, split across forms
-`Bike_2_r == 6 - Bike_2` exactly in CD (r = -1.000). `Bike_2` is the
-correctly oriented column (+0.363 vs the rest of the scale), `Bike_2_r` is
-flipped (-0.363). But the design files treated the two columns as **two
-separate items in the masking pool**: `Bike_2` went to form 1 (397 observed)
-and `Bike_2_r` to form 3 (393), disjointly, in all three designs.
+### 16. Bike_2 is in, as `Bike_2_r_cor`, and both raw columns are wrong
+Resolved 2026-08-21; the item list is now 27. The raw columns are still in
+the files, so this stays a live trap.
 
-So no use of this item is both complete and faithful to the design. Merging
-recovers all 790 responses but makes the item span forms 1 and 3, pushing
-common-item overlap to 6/7/6 — an asymmetric anchor set. Either column alone
-discards half the data. It is dropped (`wdfab_io.EXCLUDED_ITEMS`), leaving
-26 items and costing the weakest bike item (+0.363 against +0.65..+0.735 for
-the other six).
+The item shipped as `Bike_2` and `Bike_2_r == 6 - Bike_2`, and **both are
+mis-scored**. Verified on the 393 form-3 rows of every design file, the
+correction is a deterministic permutation of `Bike_2`:
 
-**This is interim.** The design files should be regenerated from a
-27-column pool; then restore Bike_2.
+    1 -> 4    2 -> 3    3 -> 2    4 -> 1    5 -> 5
+
+Categories 1..4 are reversed; category 5 stays put, because it is not the
+top of that continuum. Mean score on the other 26 items by raw `Bike_2`
+category is 2.21 / 1.98 / 1.71 / 1.57 for 1..4 — decreasing — and **3.29**
+for category 5. So the flat `6 - x` reversal that produced `Bike_2_r` sent
+those 303 respondents to the bottom of the scale.
+
+That is why neither original column worked: item-rest correlation +0.363
+for `Bike_2`, -0.363 for `Bike_2_r`. `Bike_2_r_cor` is monotone in the
+rest-score across all five categories (1.45 / 1.68 / 1.97 / 2.17 / 3.29)
+and correlates +0.614, in line with the other six bicycling items
+(+0.65..+0.735).
+
+Column roles in the current design files:
+
+| column | role |
+|---|---|
+| `Bike_2_r_cor` | the item — design-masked, form 3, 393 responses, in all three designs |
+| `Bike_2` | old coding, masked to form 3 |
+| `Bike_2_r` | old coding, **unmasked** (all 1191, every form) — same trap as fact 14 |
+
+Both raw columns are in `wdfab_io.EXCLUDED_ITEMS`. Using `Bike_2_r` would
+take the wrong coding *and* drop the design masking.
+
+**The CD export does not carry `Bike_2_r_cor`** — the correction shipped in
+the design files only. `wdfab_io.derive_bike2_correction` applies
+`BIKE2_RECODE` to any frame that lacks the column, and raises if a file
+supplies a column that disagrees with the table. Ask the collaborators for a
+corrected CD export; until then CD's copy is derived here.
 
 ### 17. ADVI's result must be assigned to `model.params` by hand
 `fit_marginal_advi` stores its output in `self.marginal_params`. But
@@ -349,13 +374,13 @@ above |r| = 0.75 on CD; at 0.85 the top offenders are `Bike_1`/`Bike_7`
 files". No masking layer to write.
 
 **D. Replication.** A single masking realisation gives no handle on
-simulation variance. With 26 items the MCMC is cheap enough to replicate;
+simulation variance. With 27 items the MCMC is cheap enough to replicate;
 plan for it in the directory layout from the start. Note the delivered
 design files are one realisation each — replicating means regenerating
 masks, which needs the generating script from the collaborators.
 
 **E. REOPENED (2026-08-13) — categories are present but several are nearly
-empty.** All 26 items do show exactly 5 distinct categories, so the scalar
+empty.** All 27 items do show exactly 5 distinct categories, so the scalar
 `response_cardinality=5` is formally correct. That was the shallow reading.
 On **CD**, category 3 holds 10 responses for `DA068`, 13 for `DA053`, 15 for
 `DA061`; seven items have a category under 40. Under a design that gives an

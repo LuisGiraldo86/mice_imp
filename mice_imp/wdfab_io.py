@@ -43,39 +43,63 @@ DA_KEYS = [
     "DA069_r", "DA070", "DA071", "DA072", "DA073", "DA074",
 ]
 
-# The bicycling items unique to the German instrument. Bike_2 is EXCLUDED --
-# see EXCLUDED_ITEMS below.
+# The bicycling items unique to the German instrument. All seven are in --
+# Bike_2 enters as `Bike_2_r_cor`, the corrected recoding shipped 2026-08-21;
+# see BIKE2 below.
 BIKE_KEYS = [
-    "Bike_1", "Bike_3", "Bike_4", "Bike_5", "Bike_6", "Bike_7",
+    "Bike_1", "Bike_2_r_cor", "Bike_3", "Bike_4", "Bike_5", "Bike_6",
+    "Bike_7",
 ]
 
 # Canonical order. Never re-sort: posterior item-parameter arrays are
 # positional and get aligned against mirt output.
 ITEM_KEYS = DA_KEYS + BIKE_KEYS
 
-# Bike_2 is dropped, leaving 26 items. Established 2026-08-13:
+# Bike_2 is RESTORED as `Bike_2_r_cor` (2026-08-21), giving 27 items. The
+# history matters, because the raw columns are still in the files and picking
+# the wrong one is silent:
 #
-#   In the CD export, Bike_2_r == 6 - Bike_2 exactly (r = -1.000, perfect
-#   anti-diagonal crosstab) -- one item stored in two columns. Bike_2 is the
-#   correctly oriented one (+0.363 against the rest of the scale); Bike_2_r
-#   is flipped (-0.363).
+#   The item was originally shipped as two columns, `Bike_2` and
+#   `Bike_2_r == 6 - Bike_2`, and the design files treated them as two
+#   separate items in the masking pool (form 1 and form 3, disjointly). That
+#   made the item unusable either way and it was dropped.
 #
-#   The design files then treated the two columns as TWO SEPARATE ITEMS in
-#   the masking pool: Bike_2 was administered to form 1 (397 observed) and
-#   Bike_2_r to form 3 (393 observed), disjointly, in all three designs.
+#   Both columns were also mis-scored. Verified on the 393 form-3 rows of
+#   every design file, the correction is a clean deterministic permutation
+#   of `Bike_2`:
 #
-# So there is no way to use this item that is both complete and faithful to
-# the design. Merging the columns recovers all 790 responses but makes the
-# item span forms 1 and 3, pushing form-pair overlap to 6/7/6 in the
-# common-item design -- an asymmetric anchor set that Stocking-Lord linking
-# and MG-IRT would both be reading unequally. Taking either column alone
-# discards half the item's data.
+#       1 -> 4    2 -> 3    3 -> 2    4 -> 1    5 -> 5
 #
-# Dropping it keeps every design's form structure exactly as specified and
-# costs the weakest bike item (+0.363, against +0.65..+0.735 for the other
-# six). This is an INTERIM decision: the design files should be regenerated
-# from a 27-column pool, after which Bike_2 can be restored here.
+#   i.e. reverse categories 1..4 and leave category 5 where it is. Category 5
+#   is not the top of the 1..4 continuum -- respondents in it have a mean
+#   score on the other 26 items of 3.29, against 2.21 / 1.98 / 1.71 / 1.57
+#   for categories 1..4. So the raw 1..4 run is reverse-oriented while 5 sits
+#   above all of them, and the flat `6 - x` reversal that produced `Bike_2_r`
+#   sent those 303 respondents to the bottom of the scale.
+#
+#   That is why neither original column worked: item-rest correlation was
+#   +0.363 for `Bike_2` and -0.363 for `Bike_2_r`. `Bike_2_r_cor` is
+#   monotone in the rest-score across all five categories (1.45 / 1.68 /
+#   1.97 / 2.17 / 3.29) and correlates +0.614, in line with the other six
+#   bicycling items (+0.65..+0.735).
+#
+# In the current design files `Bike_2_r_cor` carries the design masking
+# (form 3, 393 responses, one form in all three designs). `Bike_2` and
+# `Bike_2_r` are leftover source columns -- `Bike_2_r` is now unmasked
+# (all 1191 responses, every form), the same trap as DA062 / DA063 / DA069
+# in RAW_POLARITY_TRAPS. Using either would take the old, wrong coding, and
+# `Bike_2_r` would additionally drop the design masking entirely.
 EXCLUDED_ITEMS = ["Bike_2", "Bike_2_r"]
+
+# The corrected recoding, as a map from the raw `Bike_2` code. Applied to any
+# frame that lacks `Bike_2_r_cor` -- which is how the CD export gets it, since
+# the correction shipped in the design files only. Do not infer this from
+# `Bike_2_r`: that column is `6 - Bike_2`, so recovering the correction from
+# it requires the same table run backwards, and it is unmasked in the design
+# files, which would silently un-mask the item.
+BIKE2_RAW = "Bike_2"
+BIKE2_CORRECTED = "Bike_2_r_cor"
+BIKE2_RECODE = {1: 4, 2: 3, 3: 2, 4: 1, 5: 5}
 
 # Reverse-scored items are carried in `_r` form, and for DA062 / DA063 /
 # DA069 that is the column to use: in the design files the un-suffixed
@@ -150,6 +174,49 @@ def recode_items(
     return pd.DataFrame(out, index=df.index)[item_keys]
 
 
+def derive_bike2_correction(df: pd.DataFrame) -> pd.DataFrame:
+    """Add `Bike_2_r_cor` from raw `Bike_2` if the frame does not carry it.
+
+    The three design files ship the corrected column; the CD export does not.
+    Both have to use the same coding or the comparison is measuring a recode
+    (see BIKE2_RECODE, and the fact that the GRM and the imputation model must
+    be fit from the same frame -- a re-coding in between permutes the category
+    PMFs the imputation model returns).
+
+    A no-op when the column is already present. Never overwrites: if the file
+    supplies it, the file wins, and a disagreement is raised rather than
+    papered over.
+    """
+    if BIKE2_CORRECTED in df.columns and BIKE2_RAW in df.columns:
+        both = df[BIKE2_CORRECTED].notna() & df[BIKE2_RAW].notna()
+        if both.any():
+            expected = df.loc[both, BIKE2_RAW].map(BIKE2_RECODE)
+            clash = int((expected.to_numpy() != df.loc[both, BIKE2_CORRECTED]
+                         .to_numpy()).sum())
+            if clash:
+                raise ValueError(
+                    f"{BIKE2_CORRECTED} disagrees with BIKE2_RECODE applied to "
+                    f"{BIKE2_RAW} on {clash} of {int(both.sum())} rows. The "
+                    "correction shipped by the collaborators is no longer the "
+                    "permutation recorded here -- re-derive it before fitting."
+                )
+        return df
+
+    if BIKE2_CORRECTED in df.columns or BIKE2_RAW not in df.columns:
+        return df
+
+    codes = pd.to_numeric(df[BIKE2_RAW], errors="coerce")
+    unknown = sorted(set(codes.dropna().astype(int)) - set(BIKE2_RECODE))
+    if unknown:
+        raise ValueError(
+            f"{BIKE2_RAW}: codes {unknown} have no entry in BIKE2_RECODE"
+        )
+
+    out = df.copy()
+    out[BIKE2_CORRECTED] = codes.map(BIKE2_RECODE).astype(np.float64)
+    return out
+
+
 def load_cm(
     path: str | Path,
     item_keys: list[str] = ITEM_KEYS,
@@ -164,7 +231,7 @@ def load_cm(
     masked design files are row-aligned with the CD export (verified by exact
     agreement on every unmasked cell), so thetas can be compared positionally.
     """
-    df = read_dta(path)
+    df = derive_bike2_correction(read_dta(path))
     items = recode_items(df, item_keys, cardinality, raw_min)
 
     if not keep_covariates:

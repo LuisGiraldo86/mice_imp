@@ -210,9 +210,10 @@ a cell wherever `(y < 0) | (y >= response_cardinality) | isnan(y)`, so a
 stored `5` with `response_cardinality=5` would vanish from the likelihood
 without an error.
 
-26 items — `Bike_2` is excluded. It is one item stored in two columns
-(`Bike_2_r == 6 - Bike_2`), and the design files handed the two columns to
-different forms as if they were separate items. See CLAUDE.md fact 16."""),
+27 items. `Bike_2` enters as `Bike_2_r_cor`, the recoding the
+collaborators corrected on 2026-08-21 — both raw columns (`Bike_2`,
+`Bike_2_r`) are mis-scored and are excluded. The CD export does not carry
+the corrected column; `load_cm` derives it. See CLAUDE.md fact 16."""),
 
         code('''df = load_cm(DATA_PATH, cardinality=CARDINALITY)
 describe(df, ITEM_KEYS)

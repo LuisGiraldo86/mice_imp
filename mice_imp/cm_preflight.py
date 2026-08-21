@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """
 Preflight data contract check for the WD-FAB-DE Community Mobility subscale
-(20 adapted CM items + 6 German bicycling items; Bike_2 is excluded -- see
-wdfab_io.EXCLUDED_ITEMS) before fitting GRModel / PairwiseOrdinalStackingModel
+(20 adapted CM items + 7 German bicycling items, Bike_2 entering as the
+corrected `Bike_2_r_cor` -- see wdfab_io.EXCLUDED_ITEMS and CLAUDE.md fact 16)
+before fitting GRModel / PairwiseOrdinalStackingModel
 in bayesianquilts.
 
 Every check here corresponds to a failure mode that is SILENT downstream.
