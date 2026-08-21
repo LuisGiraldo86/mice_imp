@@ -60,7 +60,7 @@ from bayesianquilts.imputation.pairwise_stacking import PairwiseOrdinalStackingM
 from bayesianquilts.irt.grm import GRModel
 
 from mice_imp.compat import patch_batchless_training_loop
-from mice_imp.wdfab_io import ITEM_KEYS, load_frame
+from mice_imp.wdfab_io import ITEM_KEYS, ITEM_SETS, load_frame
 
 
 # ----------------------------------------------------------------------------
@@ -539,6 +539,11 @@ def main():
     ap.add_argument("--output-dir", required=True)
     ap.add_argument("--imputation-model-path", default=None)
     ap.add_argument("--cardinality", type=int, default=5)
+    ap.add_argument("--items", choices=sorted(ITEM_SETS), default="full",
+                    help="which item set to calibrate: 'full' is all 27 CM "
+                         "items, 'nobike' drops the 7 bicycling items and "
+                         "keeps the 20 adapted DA items. Every dataset gets "
+                         "both runs; give them separate --output-dir.")
     ap.add_argument("--arms", default="birt,bmi,flat")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--num-chains", type=int, default=4)
@@ -547,10 +552,12 @@ def main():
     ap.add_argument("--refit-imputer", action="store_true")
     args = ap.parse_args()
 
+    item_keys = ITEM_SETS[args.items]
     df = load_frame(args.masked_path, cardinality=args.cardinality)
+    print(f"item set '{args.items}': {len(item_keys)} items")
     run_all_arms(
         df=df,
-        item_keys=ITEM_KEYS,
+        item_keys=item_keys,
         cardinality=args.cardinality,
         output_dir=Path(args.output_dir),
         imputation_model_path=(Path(args.imputation_model_path)

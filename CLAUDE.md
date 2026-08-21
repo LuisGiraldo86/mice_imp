@@ -17,6 +17,15 @@ the test scale. CM was administered to everyone, so it has complete data
   `Bike_2_r_cor`, the corrected recoding shipped 2026-08-21; see fact 16.
 - **Approaches (5) + reference:** CD (reference), FIML, MG-IRT, Stocking-Lord
   linking, B-IRT, B-MI.
+- **Item sets (2):** every dataset is run twice — `full` (all 27 items) and
+  `nobike` (the 20 adapted `DA*` items, bicycling block dropped). The bike
+  block is unique to the German instrument, carries the strongest local
+  dependence (open issue B), and is where the MCAR premise is most strained
+  (open issue A); the `nobike` run shows whether any conclusion depends on
+  it. It is a sensitivity analysis, not a fallback — report both. Dropping
+  the block leaves all six anchors (all `DA*`) untouched, so form-pair
+  overlap is identical in both runs. The lists live in
+  `wdfab_io.ITEM_SETS`.
 - **Model:** graded response model (GRM) throughout.
 - **Comparisons:** theta vs CD by MSE and Bland-Altman; slopes by OLS
   (target 1.0); intercepts by random-intercept (item) models. Stratified by
@@ -48,9 +57,9 @@ mice_imp/
   export_estimates.py  # npz -> item_parameters.csv / theta.csv for coauthors
 notebooks/
   make_design_notebooks.py   # GENERATOR — edit this, not the .ipynb files
-  cm_{commonitem,standard,binterlaced}.ipynb   # generated drivers
-results/<design>/    # {birt,bmi,flat}.npz, noise_floor.json, summary.npz
-                     # + item_parameters.csv, theta.csv
+  cm_{commonitem,standard,binterlaced}_{full,nobike}.ipynb  # 6 drivers
+results/<design>/<itemset>/   # {birt,bmi,flat}.npz, noise_floor.json,
+                              # summary.npz, item_parameters.csv, theta.csv
 ```
 
 `export_estimates.py` is the coauthor-facing deliverable: `a` and `b1..b4`
@@ -59,7 +68,7 @@ It reads the arm `.npz` and does no computation of its own beyond reshaping
 — everything is already post-`standardize_marginal` and post-`cumsum`.
 
 ```
-python -m mice_imp.export_estimates results/binterlaced \
+python -m mice_imp.export_estimates results/binterlaced/full \
     --source data_wdfab/WDFAB_ExperimentalData_CMBinterlaced_Jul2026.dta \
     --include-d
 ```
@@ -72,13 +81,18 @@ columns: each is a posterior mean of its own quantity, and the mean of a
 product is not the product of the means (~0.02 apart here). Do not
 "fix" it.
 
-**The three design notebooks are generated.** They are thin drivers — set a
-design, call into `mice_imp/`, plot — and they are byte-identical apart from
-the design name and the design-specific header. Edit
-`make_design_notebooks.py` and re-run it; hand-editing one `.ipynb` puts the
-three out of sync silently, which is exactly the failure the generator
-exists to prevent. Anything that should change for all three designs belongs
+**The six design notebooks are generated** — 3 designs x 2 item sets. They
+are thin drivers (set a design and an item set, call into `mice_imp/`, plot)
+and are byte-identical apart from the design name, the item set, and their
+headers. Edit `make_design_notebooks.py` and re-run it; hand-editing one
+`.ipynb` puts the six out of sync silently, which is exactly the failure the
+generator exists to prevent. Anything that should change for all six belongs
 in `cm_bayes_arms.py`, not in the generator.
+
+Each notebook binds its item set once, as `FIT_KEYS`, and uses that
+everywhere — `load_cm` always reads all 27 items and `FIT_KEYS` selects. The
+two runs of a dataset write to separate directories and must not share an
+imputation model: the predictor pool differs.
 
 Each notebook opens with `SMOKE = True` (2 chains, 200/200). That is a
 wiring check, not an inferential run.
@@ -110,10 +124,10 @@ CM items (verified NaN-aware: 0 differing cells). It is only 1.66% missing
 with 586 complete cases, so it looks attractive as a CD source — but the
 selection rule for those 642 is unknown. Find out before using it.
 
-The `_small` variants are **not** subsets — same 1363 rows, same columns.
-They are an earlier, reduced-anchor variant: only `DA054` / `DA058` /
-`DA066` are multi-form, so CommonItem overlap is 3/3/3 rather than 6/6/6.
-Use the full files.
+The `_small` variants were deleted on 2026-08-21. They were **not** subsets:
+same 1363 rows and columns, but an earlier reduced-anchor variant with only
+`DA054` / `DA058` / `DA066` multi-form (CommonItem overlap 3/3/3, not
+6/6/6). If they reappear, do not treat them as a smaller sample.
 
 All three design files share one 127-column schema and cover exactly the CD
 respondent set (`id_work` sets identical). **None of them is complete**: in
@@ -129,11 +143,14 @@ The three designs use the **same six anchors and the same 21 single-form
 items** (7 per form) throughout. The 21 non-anchors sit in exactly 1 of 3
 forms in every design. The designs differ *only* in how the anchors are allocated:
 
-| design | anchors per form | overlap 1&2 / 1&3 / 2&3 | items per form |
-|---|---|---|---|
-| CommonItem | all 6 in all 3 forms | 6 / 6 / 6 | 13 / 13 / 13 |
-| Standard | all 6 in form 1; 3 each in forms 2, 3 | 3 / 3 / **0** | 13 / 10 / 10 |
-| Binterlaced | 2 per form-pair, each anchor in a different pair | 2 / 2 / 2 | 11 / 11 / 11 |
+Items per form is given for both item sets, `full` / `nobike`. Overlap is
+the same in both, since every anchor is a `DA*` item.
+
+| design | anchors per form | overlap 1&2 / 1&3 / 2&3 | items per form (full) | (nobike) |
+|---|---|---|---|---|
+| CommonItem | all 6 in all 3 forms | 6 / 6 / 6 | 13 / 13 / 13 | 11 / 11 / 10 |
+| Standard | all 6 in form 1; 3 each in forms 2, 3 | 3 / 3 / **0** | 13 / 10 / 10 | 11 / 8 / 7 |
+| Binterlaced | 2 per form-pair, each anchor in a different pair | 2 / 2 / 2 | 11 / 11 / 11 | 9 / 9 / 8 |
 
 Anchors are `DA054 DA058 DA060 DA064 DA066 DA067`. Under Standard, form 1 is
 the reference form and forms 2 and 3 link only through it — they share
@@ -449,10 +466,14 @@ method, and needs saying in the write-up.
    ```
    python -m mice_imp.cm_bayes_arms \
        data_wdfab/WDFAB_ExperimentalData_CMCommonItem_Jul2026.dta \
-       --output-dir results/commonitem --num-warmup 200 --num-samples 200
+       --items full --output-dir results/commonitem/full \
+       --num-warmup 200 --num-samples 200
    ```
+
+   `--items {full,nobike}` picks the item set; run each dataset both ways,
+   into separate `--output-dir`s.
 3. Keep logic in scripts with argparse and `.npz` checkpoints. The grid is
-   3 designs x 3 arms x replications; individual arms fail and need
+   3 designs x 2 item sets x 3 arms x replications; individual arms fail and need
    selective re-runs, which is painful from a notebook. The per-design
    notebooks exist for reading results interactively — they call into
    `mice_imp/` and hold no logic of their own. Do not move logic into them.

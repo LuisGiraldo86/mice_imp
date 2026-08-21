@@ -101,6 +101,22 @@ BIKE2_RAW = "Bike_2"
 BIKE2_CORRECTED = "Bike_2_r_cor"
 BIKE2_RECODE = {1: 4, 2: 3, 3: 2, 4: 1, 5: 5}
 
+# Every dataset is run twice: once on the full 27-item scale, once on the 20
+# adapted DA items with the bicycling block dropped. The bike items are unique
+# to the German instrument, they carry the strongest local dependence on CD
+# (Bike_1/Bike_7 r = 0.931, Bike_4/Bike_5 0.921 -- open issue B), and their
+# nonresponse is the one place where the MCAR premise is measurably strained
+# (open issue A). The no-bike run is what shows whether any conclusion about
+# the five calibration approaches depends on them.
+#
+# Dropping the block does not touch the anchors -- all six are DA items -- so
+# form-pair overlap is unchanged (6/6/6, 3/3/0, 2/2/2). Only the single-form
+# items thin out, from 7 per form to 14 spread across three forms.
+ITEM_SETS = {
+    "full": ITEM_KEYS,
+    "nobike": DA_KEYS,
+}
+
 # Reverse-scored items are carried in `_r` form, and for DA062 / DA063 /
 # DA069 that is the column to use: in the design files the un-suffixed
 # column is the unmasked source (observed in every form, ~1225-1266 rows)
