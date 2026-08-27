@@ -148,7 +148,8 @@ def run_one(design: str, itemset: str, smoke: bool, force: bool,
 
     out_dir = run_dir(design, itemset)
     row = {"design": design.lower(), "itemset": itemset,
-           "n_items": len(ITEM_SETS[itemset])}
+           "n_items": len(ITEM_SETS[itemset]),
+           "started": time.strftime("%Y-%m-%d %H:%M:%S")}
 
     if is_complete(design, itemset) and not force:
         row.update(status="skipped (already complete)", minutes=0.0)
@@ -199,22 +200,33 @@ def run_one(design: str, itemset: str, smoke: bool, force: bool,
     return row
 
 
+# Set by main() when --summary is given. Six processes running one cell each
+# would otherwise all write results/grid_summary.csv and clobber one another.
+SUMMARY_PATH: Path | None = None
+
+
 def write_summary(rows: list[dict]) -> Path:
     RESULTS.mkdir(parents=True, exist_ok=True)
-    path = RESULTS / "grid_summary.csv"
+    path = SUMMARY_PATH or (RESULTS / "grid_summary.csv")
+    path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(path, index=False)
     return path
 
 
 def print_summary(rows: list[dict]) -> None:
     df = pd.DataFrame(rows)
-    cols = [c for c in ["design", "itemset", "n_items", "status", "minutes",
+    cols = [c for c in ["design", "itemset", "n_items", "started", "status", "minutes",
                         "birt_max_rhat", "bmi_max_rhat", "flat_max_rhat",
                         "bmi_fallback_pct", "advi_init_count",
                         "theta_rmse_flat_vs_birt", "theta_rmse_bmi_vs_birt"]
             if c in df.columns]
     print("\n" + "=" * 72 + "\nGRID SUMMARY\n" + "=" * 72)
     print(df[cols].to_string(index=False))
+
+    for _, r in df.iterrows():
+        if r.get("status") == "running":
+            print(f"  {r['design']}/{r['itemset']}: still marked 'running' -- "
+                  "the process was killed before this run finished")
 
     # The three things that silently invalidate a run. Say them out loud.
     for _, r in df.iterrows():
@@ -245,9 +257,17 @@ def main() -> None:
                     help="comma-separated design/itemset, e.g. "
                          "'commonitem/full,standard/nobike'")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--summary", type=Path, default=None,
+                    help="where to write the summary CSV. Give each concurrent "
+                         "process its own path -- they all default to "
+                         "results/grid_summary.csv and would overwrite "
+                         "each other.")
     ap.add_argument("--no-export", action="store_true",
                     help="skip the CSV export after each run")
     args = ap.parse_args()
+
+    global SUMMARY_PATH
+    SUMMARY_PATH = args.summary
 
     grid = [(d, i) for d in DESIGNS for i in ITEMSETS]
     if args.only:
@@ -265,8 +285,16 @@ def main() -> None:
     rows = []
     t0 = time.time()
     for design, itemset in grid:
-        rows.append(run_one(design, itemset, args.smoke, args.force,
-                            args.seed, not args.no_export))
+        # Publish the row as 'running' FIRST. Writing only on completion left a
+        # killed run represented by whatever the file said before it started --
+        # a stale failure that reads exactly like a current one.
+        rows.append({"design": design.lower(), "itemset": itemset,
+                     "n_items": len(ITEM_SETS[itemset]),
+                     "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+                     "status": "running", "minutes": None})
+        write_summary(rows)
+        rows[-1] = run_one(design, itemset, args.smoke, args.force,
+                           args.seed, not args.no_export)
         path = write_summary(rows)          # rewritten after every run
         print(f"  -> {rows[-1]['status']}  ({rows[-1]['minutes']} min)  "
               f"summary: {path}", flush=True)
