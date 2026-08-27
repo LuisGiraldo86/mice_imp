@@ -5,3 +5,14 @@ bayesianquilts/
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+
+# Run artefacts. Posterior draws are ~8MB per arm and are rewritten wholesale
+# on every re-run, so they would grow the repo by a quarter of a gigabyte per
+# grid. The CSV exports and grid_summary.csv are the reproducible outputs and
+# stay tracked; regenerate the draws with mice_imp/run_grid.py.
+results/**/*.npz
+results/**/imputation_model/
+
+# Smoke runs, the sampler sweep, the superseded 26-item grid, launch logs.
+# Kept on disk as provenance, deliberately not in git.
+diagnostics/
