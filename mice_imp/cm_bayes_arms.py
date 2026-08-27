@@ -292,8 +292,22 @@ def fit_arm(
     num_chains: int = 4,
     num_warmup: int = 3000,
     num_samples: int = 2000,
-    step_size: float = 0.002,
-    target_accept_prob: float = 0.95,
+    # Measured 2026-08-21 by mice_imp/sweep_sampler.py on CommonItem/nobike,
+    # B-IRT only, everything else held fixed. Three configurations, six chains:
+    #
+    #   2e-3 / 0.95   non-divergent 0.055-0.115   R-hat 1.195   2.6 min
+    #   5e-4 / 0.98   non-divergent 0.120-0.285   R-hat 1.127   5.7 min
+    #   1e-4 / 0.98   non-divergent 0.090-0.105   R-hat 1.148   4.6 min
+    #
+    # 5e-4 / 0.98 was best on both counts, so it is the default -- it is also
+    # what B-MI already used. Two caveats worth keeping in view: the spread
+    # between configurations is close to the run-to-run noise (repeat runs of
+    # the SAME settings gave 0.040 and 0.115), and no configuration converged
+    # at smoke length. Those measurements are at 200 warmup; adaptation has
+    # 15x longer in a real run, so they bound the problem rather than predict
+    # it.
+    step_size: float = 0.0005,
+    target_accept_prob: float = 0.98,
     seed: int = 42,
 ) -> dict:
     """Fit one arm and persist its posterior.

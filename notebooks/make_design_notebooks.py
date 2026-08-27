@@ -242,20 +242,24 @@ IMPUTER_PATH = OUTPUT_DIR / "imputation_model"
 CARDINALITY = 5
 SEED = 42
 
-# SMOKE = True gives a fast wiring check, NOT an inferential run. Flip to
-# False for the real thing. CLAUDE.md: smoke-test before committing to full
-# chains -- nothing in this pipeline has been executed end to end.
-SMOKE = True
+# SMOKE = True is a fast wiring check, NOT an inferential run. False (the
+# default since 2026-08-21) is the real thing: 4 chains, 3000 warmup, 2000
+# samples. The pipeline HAS now been run end to end at smoke settings -- all
+# three arms, 0% B-MI fallback, ADVI reaching every arm, and a flat-vs-birt
+# noise floor of 0.003 in theta RMSE.
+SMOKE = False
 
 if SMOKE:
     NUM_CHAINS, NUM_WARMUP, NUM_SAMPLES = 2, 200, 200
 else:
     NUM_CHAINS, NUM_WARMUP, NUM_SAMPLES = 4, 3000, 2000
 
-# Chang's defaults. B-MI gets a gentler sampler: attaching PMFs turns masked
-# cells from exact zeros into parameter-dependent curvature, which makes the
-# geometry harder for NUTS.
-STEP_SIZE, TARGET_ACCEPT = 0.002, 0.95
+# Measured, not inherited: mice_imp/sweep_sampler.py compared 2e-3/0.95,
+# 5e-4/0.98 and 1e-4/0.98 on B-IRT with everything else fixed, and 5e-4/0.98
+# came out best on both divergences and R-hat. That is also what B-MI used
+# already, so all three arms now share a sampler -- which keeps the
+# flat-vs-birt noise floor a like-for-like comparison.
+STEP_SIZE, TARGET_ACCEPT = 0.0005, 0.98
 BMI_STEP_SIZE, BMI_TARGET_ACCEPT = 0.0005, 0.98
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -532,7 +536,9 @@ def run_grid(*flags):
     return proc.wait()
 
 
-run_grid("--smoke")'''),
+# Wiring check only -- uncomment to run it. It writes .npz files, so the
+# full pass below would then need --force.
+# run_grid("--smoke")'''),
 
         md("""## The full grid
 
