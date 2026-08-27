@@ -1,0 +1,542 @@
+
+=== arm: birt ===
+    ADVI warm-start (100 iterations)
+Marginal ADVI (Rao-Blackwellized abilities)
+  Item vars: ['difficulties0', 'discriminations', 'ddifficulties']
+  Surrogate params: 240
+  Rank: 0 (mean-field)
+--- Starting Training ---
+Patience for early stopping: 3 epochs
+LR decay factor on plateau: 0.5
+Convergence will be checked every: 1 epoch(s)
+Checkpoints will be saved to: None
+Optimizing keys: ['mu\\identity\\normal\\loc', 'mu\\identity\\normal\\scale', 'difficulties0\\identity\\normal\\loc', 'difficulties0\\identity\\normal\\scale', 'discriminations\\softplus\\normal\\loc', 'discriminations\\softplus\\normal\\scale', 'ddifficulties\\softplus\\normal\\loc', 'ddifficulties\\softplus\\normal\\scale']
+-------------------------
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+  -> New best loss found. Checkpoint saved.                    
+
+--- Training Finished ---
+  Final ELBO: -16081.6
+  difficulties0: mean=-1.6100, std=0.2831
+  discriminations: mean=1.6521, std=0.1893
+  ddifficulties: mean=0.8221, std=0.1157
+    NUTS: chains=4 warmup=3000 samples=2000 step=0.0005 accept=0.98
+Marginal MCMC (Rao-Blackwellized abilities)
+  Item params: ['difficulties0', 'discriminations', 'ddifficulties']
+  Total dimensions: 100
+  Quadrature: 31-point Gauss-Hermite
+  Chains: 4, Warmup: 3000, Samples: 2000
+  Initializing from ADVI solution
+  Flat parameter vector: 100 elements
+  Mass matrix: diagonal
+
+  Chain 1/4: window_adaptation warmup
+    warmup done. adapted step_size=8.4056e-03
+    Sampling (2000 steps → 2000 kept, step_size=0.008406)...
+    Non-divergent ratio: 0.064
+
+  Chain 2/4: window_adaptation warmup
+    warmup done. adapted step_size=1.3442e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.013442)...
+    Non-divergent ratio: 0.141
+
+  Chain 3/4: window_adaptation warmup
+    warmup done. adapted step_size=1.2597e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.012597)...
+    Non-divergent ratio: 0.092
+
+  Chain 4/4: window_adaptation warmup
+    warmup done. adapted step_size=2.8737e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.028737)...
+    Non-divergent ratio: 0.100
+
+  Kept 4/4 chains
+  Mean non-divergent: 0.099
+  difficulties0: mean=-0.4172, std=0.5632
+  discriminations: mean=2.1559, std=1.0229
+  ddifficulties: mean=0.8063, std=0.4096
+    R-hat difficulties0: mean=1.0020 max=1.0044
+    R-hat discriminations: mean=1.0023 max=1.0072
+    R-hat ddifficulties: mean=1.0021 max=1.0157
+    max R-hat overall: 1.0157
+  Standardizing marginal: mu=-0.1797, sigma=1.0373
+    theta after standardisation: mean=-0.0275 sd=1.0199 mean PSD=0.3424
+    saved /home/luis/CGE/mice_imp/results/standard/nobike/birt.npz
+
+fitting imputation model (CM items only)
+Computing feature correlations...
+Fitting PairwiseOrdinalStackingModel
+  Variables: 20
+  Observations: 1363
+  Min obs per model: 5
+  Parallel jobs: 1
+  Top features per target: 19
+  DM alpha prior: 0.5
+  Global ordinal values: [0. 1. 2. 3. 4.] (n=5)
+
+Fitting marginal regression models...
+  20 of 20 remaining
+  Var 0 (DA051): elpd/n=-1.5218
+  Var 1 (DA053): elpd/n=-0.9624
+  Var 2 (DA054): elpd/n=-0.8975
+  Var 3 (DA055): elpd/n=-1.5935
+  Var 4 (DA058): elpd/n=-0.9202
+  Var 5 (DA060): elpd/n=-0.7397
+  Var 6 (DA061): elpd/n=-0.9237
+  Var 7 (DA062_r): elpd/n=-1.5812
+  Var 8 (DA063_r): elpd/n=-1.5845
+  Var 9 (DA064): elpd/n=-0.8146
+  Var 10 (DA066): elpd/n=-0.5340
+  Var 11 (DA067): elpd/n=-0.7433
+  Var 12 (DA052): elpd/n=-1.4201
+  Var 13 (DA068): elpd/n=-0.9329
+  Var 14 (DA069_r): elpd/n=-1.1299
+  Var 15 (DA070): elpd/n=-1.2017
+  Var 16 (DA071): elpd/n=-1.4799
+  Var 17 (DA072): elpd/n=-1.1808
+  Var 18 (DA073): elpd/n=-1.2087
+  Var 19 (DA074): elpd/n=-1.1702
+
+Fitting one-predictor regression models...
+  Processing DA051 (7 predictors to fit)
+  Processing DA053 (10 predictors to fit)
+  Processing DA054 (14 predictors to fit)
+  Processing DA055 (7 predictors to fit)
+  Processing DA058 (14 predictors to fit)
+  Processing DA060 (15 predictors to fit)
+  Processing DA061 (7 predictors to fit)
+  Processing DA062_r (7 predictors to fit)
+  Processing DA063_r (10 predictors to fit)
+  Processing DA064 (15 predictors to fit)
+  Processing DA066 (15 predictors to fit)
+  Processing DA067 (14 predictors to fit)
+  Processing DA052 (10 predictors to fit)
+  Processing DA068 (10 predictors to fit)
+  Processing DA069_r (6 predictors to fit)
+  Processing DA070 (6 predictors to fit)
+  Processing DA071 (10 predictors to fit)
+  Processing DA072 (6 predictors to fit)
+  Processing DA073 (6 predictors to fit)
+  Processing DA074 (7 predictors to fit)
+
+Fitting Dirichlet-multinomial contingency table models...
+  Categorical/ordinal variables: 20 of 20
+  Marginal DM var 0 (DA051): elpd/n=-1.5234
+  Marginal DM var 1 (DA053): elpd/n=-0.9611
+  Marginal DM var 2 (DA054): elpd/n=-1.5130
+  Marginal DM var 3 (DA055): elpd/n=-1.5945
+  Marginal DM var 4 (DA058): elpd/n=-1.5242
+  Marginal DM var 5 (DA060): elpd/n=-1.2431
+  Marginal DM var 6 (DA061): elpd/n=-0.9246
+  Marginal DM var 7 (DA062_r): elpd/n=-1.5807
+  Marginal DM var 8 (DA063_r): elpd/n=-1.5841
+  Marginal DM var 9 (DA064): elpd/n=-1.3629
+  Marginal DM var 10 (DA066): elpd/n=-0.9329
+  Marginal DM var 11 (DA067): elpd/n=-1.2552
+  Marginal DM var 12 (DA052): elpd/n=-1.4221
+  Marginal DM var 13 (DA068): elpd/n=-0.9328
+  Marginal DM var 14 (DA069_r): elpd/n=-1.1288
+  Marginal DM var 15 (DA070): elpd/n=-1.2006
+  Marginal DM var 16 (DA071): elpd/n=-1.4790
+  Marginal DM var 17 (DA072): elpd/n=-1.1808
+  Marginal DM var 18 (DA073): elpd/n=-1.2087
+  Marginal DM var 19 (DA074): elpd/n=-1.1704
+  DM (DA055->DA051): elpd/n=-1.3741, n=417
+  DM (DA060->DA051): elpd/n=-1.4069, n=419
+  DM (DA061->DA051): elpd/n=-1.4153, n=415
+  DM (DA062_r->DA051): elpd/n=-1.3847, n=415
+  DM (DA064->DA051): elpd/n=-1.3844, n=412
+  DM (DA066->DA051): elpd/n=-1.4179, n=420
+  DM (DA074->DA051): elpd/n=-1.3715, n=425
+  DM (DA054->DA053): elpd/n=-0.6414, n=430
+  DM (DA058->DA053): elpd/n=-0.6688, n=426
+  DM (DA060->DA053): elpd/n=-0.5934, n=429
+  DM (DA063_r->DA053): elpd/n=-0.7223, n=419
+  DM (DA064->DA053): elpd/n=-0.5793, n=420
+  DM (DA066->DA053): elpd/n=-0.5375, n=425
+  DM (DA067->DA053): elpd/n=-0.6247, n=424
+  DM (DA052->DA053): elpd/n=-0.9548, n=396
+  DM (DA068->DA053): elpd/n=-0.7886, n=413
+  DM (DA071->DA053): elpd/n=-0.8981, n=402
+  DM (DA053->DA054): elpd/n=-1.2108, n=430
+  DM (DA058->DA054): elpd/n=-0.9598, n=842
+  DM (DA060->DA054): elpd/n=-1.1058, n=432
+  DM (DA063_r->DA054): elpd/n=-1.1872, n=418
+  DM (DA064->DA054): elpd/n=-1.1076, n=421
+  DM (DA066->DA054): elpd/n=-1.1489, n=425
+  DM (DA067->DA054): elpd/n=-1.1257, n=837
+  DM (DA052->DA054): elpd/n=-1.4685, n=396
+  DM (DA068->DA054): elpd/n=-1.4306, n=413
+  DM (DA069_r->DA054): elpd/n=-1.4102, n=383
+  DM (DA070->DA054): elpd/n=-1.4170, n=393
+  DM (DA071->DA054): elpd/n=-1.4539, n=404
+  DM (DA072->DA054): elpd/n=-1.4027, n=396
+  DM (DA073->DA054): elpd/n=-1.4419, n=409
+  DM (DA051->DA055): elpd/n=-1.4528, n=417
+  DM (DA060->DA055): elpd/n=-1.2679, n=418
+  DM (DA061->DA055): elpd/n=-1.2996, n=414
+  DM (DA062_r->DA055): elpd/n=-1.2388, n=412
+  DM (DA064->DA055): elpd/n=-1.2811, n=410
+  DM (DA066->DA055): elpd/n=-1.2782, n=419
+  DM (DA074->DA055): elpd/n=-1.5655, n=406
+  DM (DA053->DA058): elpd/n=-1.2511, n=426
+  DM (DA054->DA058): elpd/n=-0.9714, n=842
+  DM (DA060->DA058): elpd/n=-1.0610, n=428
+  DM (DA063_r->DA058): elpd/n=-1.2121, n=414
+  DM (DA064->DA058): elpd/n=-1.0036, n=417
+  DM (DA066->DA058): elpd/n=-1.1689, n=421
+  DM (DA067->DA058): elpd/n=-1.1300, n=829
+  DM (DA052->DA058): elpd/n=-1.5136, n=391
+  DM (DA068->DA058): elpd/n=-1.4602, n=409
+  DM (DA069_r->DA058): elpd/n=-1.4162, n=381
+  DM (DA070->DA058): elpd/n=-1.4072, n=388
+  DM (DA071->DA058): elpd/n=-1.4374, n=400
+  DM (DA072->DA058): elpd/n=-1.4170, n=392
+  DM (DA073->DA058): elpd/n=-1.4561, n=406
+  DM (DA051->DA060): elpd/n=-1.1549, n=419
+  DM (DA053->DA060): elpd/n=-0.8642, n=429
+  DM (DA054->DA060): elpd/n=-0.8111, n=432
+  DM (DA055->DA060): elpd/n=-0.9445, n=418
+  DM (DA058->DA060): elpd/n=-0.7533, n=428
+  DM (DA061->DA060): elpd/n=-0.8792, n=421
+  DM (DA062_r->DA060): elpd/n=-0.9250, n=416
+  DM (DA063_r->DA060): elpd/n=-0.9731, n=417
+  DM (DA064->DA060): elpd/n=-0.8010, n=835
+  DM (DA066->DA060): elpd/n=-0.8169, n=848
+  DM (DA067->DA060): elpd/n=-0.7439, n=424
+  DM (DA052->DA060): elpd/n=-1.1952, n=395
+  DM (DA068->DA060): elpd/n=-1.1515, n=411
+  DM (DA071->DA060): elpd/n=-1.1695, n=403
+  DM (DA074->DA060): elpd/n=-1.2142, n=409
+  DM (DA051->DA061): elpd/n=-0.8146, n=415
+  DM (DA055->DA061): elpd/n=-0.6373, n=414
+  DM (DA060->DA061): elpd/n=-0.5523, n=421
+  DM (DA062_r->DA061): elpd/n=-0.6397, n=414
+  DM (DA064->DA061): elpd/n=-0.5905, n=415
+  DM (DA066->DA061): elpd/n=-0.4920, n=422
+  DM (DA074->DA061): elpd/n=-0.8693, n=407
+  DM (DA051->DA062_r): elpd/n=-1.4532, n=415
+  DM (DA055->DA062_r): elpd/n=-1.2287, n=412
+  DM (DA060->DA062_r): elpd/n=-1.2381, n=416
+  DM (DA061->DA062_r): elpd/n=-1.2809, n=414
+  DM (DA064->DA062_r): elpd/n=-1.2997, n=409
+  DM (DA066->DA062_r): elpd/n=-1.2326, n=418
+  DM (DA074->DA062_r): elpd/n=-1.5620, n=405
+  DM (DA053->DA063_r): elpd/n=-1.3551, n=419
+  DM (DA054->DA063_r): elpd/n=-1.2484, n=418
+  DM (DA058->DA063_r): elpd/n=-1.2573, n=414
+  DM (DA060->DA063_r): elpd/n=-1.3328, n=417
+  DM (DA064->DA063_r): elpd/n=-1.2804, n=409
+  DM (DA066->DA063_r): elpd/n=-1.3247, n=413
+  DM (DA067->DA063_r): elpd/n=-1.3347, n=412
+  DM (DA052->DA063_r): elpd/n=-1.5747, n=385
+  DM (DA068->DA063_r): elpd/n=-1.5350, n=404
+  DM (DA071->DA063_r): elpd/n=-1.5259, n=393
+  DM (DA051->DA064): elpd/n=-1.2555, n=412
+  DM (DA053->DA064): elpd/n=-0.9840, n=420
+  DM (DA054->DA064): elpd/n=-0.9288, n=421
+  DM (DA055->DA064): elpd/n=-1.0800, n=410
+  DM (DA058->DA064): elpd/n=-0.8141, n=417
+  DM (DA060->DA064): elpd/n=-0.9356, n=835
+  DM (DA061->DA064): elpd/n=-1.0605, n=415
+  DM (DA062_r->DA064): elpd/n=-1.1185, n=409
+  DM (DA063_r->DA064): elpd/n=-1.0395, n=409
+  DM (DA066->DA064): elpd/n=-1.0087, n=833
+  DM (DA067->DA064): elpd/n=-0.8863, n=415
+  DM (DA052->DA064): elpd/n=-1.3430, n=388
+  DM (DA068->DA064): elpd/n=-1.2691, n=404
+  DM (DA071->DA064): elpd/n=-1.2521, n=396
+  DM (DA074->DA064): elpd/n=-1.3119, n=405
+  DM (DA051->DA066): elpd/n=-0.8558, n=420
+  DM (DA053->DA066): elpd/n=-0.4999, n=425
+  DM (DA054->DA066): elpd/n=-0.5328, n=425
+  DM (DA055->DA066): elpd/n=-0.6559, n=419
+  DM (DA058->DA066): elpd/n=-0.5425, n=421
+  DM (DA060->DA066): elpd/n=-0.4996, n=848
+  DM (DA061->DA066): elpd/n=-0.5143, n=422
+  DM (DA062_r->DA066): elpd/n=-0.6145, n=418
+  DM (DA063_r->DA066): elpd/n=-0.6420, n=413
+  DM (DA064->DA066): elpd/n=-0.5547, n=833
+  DM (DA067->DA066): elpd/n=-0.4929, n=423
+  DM (DA052->DA066): elpd/n=-0.8984, n=389
+  DM (DA068->DA066): elpd/n=-0.8247, n=408
+  DM (DA071->DA066): elpd/n=-0.8559, n=397
+  DM (DA074->DA066): elpd/n=-0.9255, n=411
+  DM (DA053->DA067): elpd/n=-0.9525, n=424
+  DM (DA054->DA067): elpd/n=-0.8692, n=837
+  DM (DA058->DA067): elpd/n=-0.8629, n=829
+  DM (DA060->DA067): elpd/n=-0.7966, n=424
+  DM (DA063_r->DA067): elpd/n=-1.0311, n=412
+  DM (DA064->DA067): elpd/n=-0.8161, n=415
+  DM (DA066->DA067): elpd/n=-0.8605, n=423
+  DM (DA052->DA067): elpd/n=-1.2659, n=388
+  DM (DA068->DA067): elpd/n=-1.1999, n=405
+  DM (DA069_r->DA067): elpd/n=-1.1649, n=379
+  DM (DA070->DA067): elpd/n=-1.1661, n=386
+  DM (DA071->DA067): elpd/n=-1.2234, n=395
+  DM (DA072->DA067): elpd/n=-1.1507, n=391
+  DM (DA073->DA067): elpd/n=-1.1982, n=404
+  DM (DA053->DA052): elpd/n=-1.3898, n=396
+  DM (DA054->DA052): elpd/n=-1.3653, n=396
+  DM (DA058->DA052): elpd/n=-1.3960, n=391
+  DM (DA060->DA052): elpd/n=-1.3888, n=395
+  DM (DA063_r->DA052): elpd/n=-1.4182, n=385
+  DM (DA064->DA052): elpd/n=-1.4059, n=388
+  DM (DA066->DA052): elpd/n=-1.3928, n=389
+  DM (DA067->DA052): elpd/n=-1.4153, n=388
+  DM (DA068->DA052): elpd/n=-1.3526, n=390
+  DM (DA071->DA052): elpd/n=-1.3897, n=382
+  DM (DA053->DA068): elpd/n=-0.7965, n=413
+  DM (DA054->DA068): elpd/n=-0.8412, n=413
+  DM (DA058->DA068): elpd/n=-0.8589, n=409
+  DM (DA060->DA068): elpd/n=-0.8776, n=411
+  DM (DA063_r->DA068): elpd/n=-0.8891, n=404
+  DM (DA064->DA068): elpd/n=-0.8809, n=404
+  DM (DA066->DA068): elpd/n=-0.8825, n=408
+  DM (DA067->DA068): elpd/n=-0.8821, n=405
+  DM (DA052->DA068): elpd/n=-0.8813, n=390
+  DM (DA071->DA068): elpd/n=-0.8219, n=405
+  DM (DA054->DA069_r): elpd/n=-1.0526, n=383
+  DM (DA058->DA069_r): elpd/n=-1.0449, n=381
+  DM (DA067->DA069_r): elpd/n=-1.0576, n=379
+  DM (DA070->DA069_r): elpd/n=-0.8756, n=395
+  DM (DA072->DA069_r): elpd/n=-0.9059, n=396
+  DM (DA073->DA069_r): elpd/n=-1.0524, n=405
+  DM (DA054->DA070): elpd/n=-1.1236, n=393
+  DM (DA058->DA070): elpd/n=-1.0934, n=388
+  DM (DA067->DA070): elpd/n=-1.1428, n=386
+  DM (DA069_r->DA070): elpd/n=-0.9151, n=395
+  DM (DA072->DA070): elpd/n=-0.8529, n=413
+  DM (DA073->DA070): elpd/n=-1.0869, n=415
+  DM (DA053->DA071): elpd/n=-1.4380, n=402
+  DM (DA054->DA071): elpd/n=-1.4049, n=404
+  DM (DA058->DA071): elpd/n=-1.3666, n=400
+  DM (DA060->DA071): elpd/n=-1.4196, n=403
+  DM (DA063_r->DA071): elpd/n=-1.4330, n=393
+  DM (DA064->DA071): elpd/n=-1.3778, n=396
+  DM (DA066->DA071): elpd/n=-1.4330, n=397
+  DM (DA067->DA071): elpd/n=-1.4153, n=395
+  DM (DA052->DA071): elpd/n=-1.4477, n=382
+  DM (DA068->DA071): elpd/n=-1.3671, n=405
+  DM (DA054->DA072): elpd/n=-1.0894, n=396
+  DM (DA058->DA072): elpd/n=-1.0884, n=392
+  DM (DA067->DA072): elpd/n=-1.1064, n=391
+  DM (DA069_r->DA072): elpd/n=-0.9408, n=396
+  DM (DA070->DA072): elpd/n=-0.8479, n=413
+  DM (DA073->DA072): elpd/n=-1.0389, n=417
+  DM (DA054->DA073): elpd/n=-1.1671, n=409
+  DM (DA058->DA073): elpd/n=-1.1630, n=406
+  DM (DA067->DA073): elpd/n=-1.1836, n=404
+  DM (DA069_r->DA073): elpd/n=-1.0895, n=405
+  DM (DA070->DA073): elpd/n=-1.0872, n=415
+  DM (DA072->DA073): elpd/n=-1.0618, n=417
+  DM (DA051->DA074): elpd/n=-1.0097, n=425
+  DM (DA055->DA074): elpd/n=-1.1350, n=406
+  DM (DA060->DA074): elpd/n=-1.1179, n=409
+  DM (DA061->DA074): elpd/n=-1.1102, n=407
+  DM (DA062_r->DA074): elpd/n=-1.1320, n=405
+  DM (DA064->DA074): elpd/n=-1.0865, n=405
+  DM (DA066->DA074): elpd/n=-1.1273, n=411
+
+Completed:
+  Regression marginal: 20/20
+  Regression univariate: 157/196
+  DM marginal: 20/20
+  DM pairwise: 196/196
+
+=== arm: bmi ===
+    imputation model validated
+    PMFs: 16218 masked cells | flat fallback 0 (0.0%) | unfilled 0 (0.0%)
+    initialising from supplied ADVI params
+    NUTS: chains=4 warmup=3000 samples=2000 step=0.0005 accept=0.98
+Marginal MCMC (Rao-Blackwellized abilities)
+  Item params: ['difficulties0', 'discriminations', 'ddifficulties']
+  Total dimensions: 100
+  Quadrature: 31-point Gauss-Hermite
+  Chains: 4, Warmup: 3000, Samples: 2000
+  Initializing from ADVI solution
+  Flat parameter vector: 100 elements
+  Mass matrix: diagonal
+
+  Chain 1/4: window_adaptation warmup
+    warmup done. adapted step_size=2.3837e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.023837)...
+    Non-divergent ratio: 0.018
+
+  Chain 2/4: window_adaptation warmup
+    warmup done. adapted step_size=1.7693e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.017693)...
+    Non-divergent ratio: 0.013
+
+  Chain 3/4: window_adaptation warmup
+    warmup done. adapted step_size=1.7789e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.017789)...
+    Non-divergent ratio: 0.018
+
+  Chain 4/4: window_adaptation warmup
+    warmup done. adapted step_size=1.0640e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.010640)...
+    Non-divergent ratio: 0.009
+
+  Kept 4/4 chains
+  Mean non-divergent: 0.014
+  difficulties0: mean=0.0547, std=0.8936
+  discriminations: mean=2.4095, std=1.2486
+  ddifficulties: mean=0.7366, std=0.4332
+    R-hat difficulties0: mean=1.0044 max=1.0112
+    R-hat discriminations: mean=1.0059 max=1.0216
+    R-hat ddifficulties: mean=1.0038 max=1.0091
+    max R-hat overall: 1.0216
+  Standardizing marginal: mu=-0.2540, sigma=1.0313
+    theta after standardisation: mean=-0.0285 sd=1.0194 mean PSD=0.2962
+    saved /home/luis/CGE/mice_imp/results/standard/nobike/bmi.npz
+
+=== arm: flat ===
+    initialising from supplied ADVI params
+    NUTS: chains=4 warmup=3000 samples=2000 step=0.0005 accept=0.98
+Marginal MCMC (Rao-Blackwellized abilities)
+  Item params: ['difficulties0', 'discriminations', 'ddifficulties']
+  Total dimensions: 100
+  Quadrature: 31-point Gauss-Hermite
+  Chains: 4, Warmup: 3000, Samples: 2000
+  Initializing from ADVI solution
+  Flat parameter vector: 100 elements
+  Mass matrix: diagonal
+
+  Chain 1/4: window_adaptation warmup
+    warmup done. adapted step_size=2.8015e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.028015)...
+    Non-divergent ratio: 0.096
+
+  Chain 2/4: window_adaptation warmup
+    warmup done. adapted step_size=6.1311e-03
+    Sampling (2000 steps → 2000 kept, step_size=0.006131)...
+    Non-divergent ratio: 0.086
+
+  Chain 3/4: window_adaptation warmup
+    warmup done. adapted step_size=3.5236e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.035236)...
+    Non-divergent ratio: 0.051
+
+  Chain 4/4: window_adaptation warmup
+    warmup done. adapted step_size=1.2404e-02
+    Sampling (2000 steps → 2000 kept, step_size=0.012404)...
+    Non-divergent ratio: 0.120
+
+  Kept 4/4 chains
+  Mean non-divergent: 0.088
+  difficulties0: mean=-0.4186, std=0.5633
+  discriminations: mean=2.1529, std=1.0234
+  ddifficulties: mean=0.8073, std=0.4099
+    R-hat difficulties0: mean=1.0032 max=1.0094
+    R-hat discriminations: mean=1.0025 max=1.0071
+    R-hat ddifficulties: mean=1.0021 max=1.0146
+    max R-hat overall: 1.0146
+  Standardizing marginal: mu=-0.1810, sigma=1.0382
+    theta after standardisation: mean=-0.0278 sd=1.0202 mean PSD=0.3424
+    saved /home/luis/CGE/mice_imp/results/standard/nobike/flat.npz
+
+=== noise floor (flat vs birt: same posterior by construction) ===
+    theta RMSE       0.00131
+    max |delta a|    0.01571
+    B-MI vs B-IRT    0.21386  (163.3x the floor)
+  wrote /home/luis/CGE/mice_imp/results/standard/nobike/item_parameters.csv  (60 rows, arms: birt, bmi, flat)
+  wrote /home/luis/CGE/mice_imp/results/standard/nobike/theta.csv  (1363 rows)
