@@ -25,9 +25,19 @@ Usage:
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+# Sampler sizes are quoted in the notebook prose, so read them from the runner
+# rather than restating them -- a hardcoded "200/200" here goes stale the
+# moment the profile changes, and the prose is what people size a run against.
+from mice_imp.run_grid import PROFILES  # noqa: E402
+
+SMOKE, FULL = PROFILES["smoke"], PROFILES["full"]
 OUT = REPO / "notebooks"
 
 # Design-specific facts, re-established 2026-08-21 against the corrected
@@ -462,30 +472,114 @@ export(OUTPUT_DIR, design=DESIGN.lower(), itemset=ITEMSET,
     }
 
 
-def build_runner() -> dict:
-    """The batch driver: all six runs, back to back.
+# The two batch drivers. Both run the same six cells through the same
+# `mice_imp/run_grid.py`; they differ only in which anchor variant of the
+# design files they point it at, and therefore where the results land.
+#
+# `_small` is a misleading filename and the header below says so out loud:
+# those files are the same 1363 respondents with THREE anchors instead of six,
+# not a smaller sample. See VARIANTS in mice_imp/run_grid.py.
+RUNNERS = {
+    "run_all": {
+        "variant": "main",
+        "results": "results",
+        "flags": '"--force"',
+        "title": "Run the whole grid — 3 designs x 2 item sets",
+        "lede": (
+            "Runs all six calibrations back to back, `birt` -> `bmi` -> "
+            "`flat` in each."
+        ),
+        "preamble": "",
+        "force_note": """If you smoke-tested first, the smoke `.npz` files are sitting in the output
+directories and will cause every run to be skipped as already complete —
+hence `--force` here.""",
+    },
+    "run_all_sensitivity": {
+        "variant": "reduced_anchor",
+        "results": "results_reduced_anchor",
+        "flags": '"--variant", "reduced_anchor"',
+        "title": "Sensitivity grid — three anchors instead of six",
+        "lede": (
+            "The same six calibrations, `birt` -> `bmi` -> `flat` in each, on "
+            "the `_small` design files."
+        ),
+        "preamble": """## What this varies — read this before quoting any number from it
+
+The `_small` files are **not a smaller sample.** Same 1363 respondents, same
+128 columns, same form sizes 455 / 454 / 454. What changes is the anchor set:
+**three anchors (`DA054`, `DA058`, `DA066`) where the main delivery carries
+six.** Verified against the delivered files on 2026-08-28.
+
+| design | overlap 1&2 / 1&3 / 2&3 — main | reduced anchor |
+|---|---|---|
+| CommonItem | 6 / 6 / 6 | **3 / 3 / 3** |
+| Binterlaced | 2 / 2 / 2 | **1 / 1 / 1** |
+| Standard | 3 / 3 / 0 | **1 / 2 / 0** |
+
+So this is a sensitivity analysis on **linking strength**, not on sample size,
+and it should be described that way in the write-up — "small" is the
+collaborators' filename, not what is being varied. It is also a direct probe of
+**open issue B**: two of the three surviving anchors are the correlated pair
+`DA054` / `DA058` (r = 0.840), and `DA066` correlates 0.88 with `DA053` and
+0.876 with `DA060`. Three anchors that are not independent carry less joint
+information than three anchors would suggest, and Binterlaced drops to a
+**single** shared item per form pair.
+
+All three anchors are `DA*` items, so `nobike` leaves the anchor set untouched
+in this variant exactly as it does in the main one, and the two item sets stay
+comparable.
+
+### Preflight check 2b FAILs here — decide before trusting the output
+
+Run on 2026-08-28, all three files fail category sparsity: **10–11 items have a
+category with fewer than 20 responses** (`DA061`, `DA068`, `DA053`, `Bike_1`,
+`DA069_r`, `Bike_6`, `Bike_7`, `DA067`, `DA073`, `DA060`, and `DA066` in
+Standard and Binterlaced), against 8–9 items in the main files. Thinner
+anchoring spreads the same responses across fewer shared items, so open issue E
+is *worse* here, not better. Expect divergent transitions and R-hat failures
+that look like a sampler problem and are not one. This is the standing issue-E
+decision (collapse the category, tighten the threshold prior, or document those
+parameters as not interpretable) — it is not resolved by running this grid.
+
+""",
+        "force_note": """No `--force` here: `results_reduced_anchor/` starts empty, so nothing is
+skipped. Add it only after a smoke run has put `.npz` files there.""",
+    },
+}
+
+
+def build_runner(spec: dict) -> dict:
+    """A batch driver: all six runs of one anchor variant, back to back.
 
     Holds no logic of its own -- everything is in `mice_imp/run_grid.py`, so
-    that an unattended run does not depend on a live kernel.
+    that an unattended run does not depend on a live kernel. `spec` is one
+    entry of RUNNERS above.
     """
+    variant, results, flags = spec["variant"], spec["results"], spec["flags"]
+    nohup_flags = "" if variant == "main" else f" --variant {variant}"
+    flags_prose = ("`--force` as needed" if variant == "main"
+                   else f'`--variant {variant}`')
     cells = [
-        md("""# Run the whole grid — 3 designs x 2 item sets
+        md(f"""# {spec["title"]}
 
-Runs all six calibrations back to back, `birt` -> `bmi` -> `flat` in each.
+{spec["lede"]}
 **Generated by `notebooks/make_design_notebooks.py` — edit the generator,
 not this file.** All logic is in `mice_imp/run_grid.py`.
 
-Order is CommonItem, Binterlaced, Standard, and `full` before `nobike`:
+{spec["preamble"]}Order is CommonItem, Binterlaced, Standard, and `full` before `nobike`:
 increasing difficulty, so a failure lands where there is the most signal to
-diagnose it. `standard/nobike` is the thinnest cell in the grid (7 items in
-form 3, three of them anchors) and runs last.
+diagnose it. `standard/nobike` is the thinnest cell in the grid and runs last.
 
 The runner is **resumable** — a run whose three arm `.npz` files already
 exist is skipped, so an interrupted weekend continues rather than restarting
 — **isolated**, in that one run raising does not stop the other five, and
 **logged**, with each run's output captured to
-`results/<design>/<itemset>/run.log` and `results/grid_summary.csv`
+`{results}/<design>/<itemset>/run.log` and `{results}/grid_summary.csv`
 rewritten after every run.
+
+Everything this notebook writes goes under **`{results}/`**, and every
+exported CSV row carries `variant = "{variant}"`, so these estimates cannot be
+pooled with the other grid's by accident.
 
 ## For a weekend run, prefer the terminal
 
@@ -494,19 +588,30 @@ until Monday: a closed laptop, a suspended session or a dropped connection
 takes the kernel and the run with it. From a terminal instead:
 
 ```
-nohup python -m mice_imp.run_grid > results/grid.out 2>&1 &
-tail -f results/grid.out
+nohup python -m mice_imp.run_grid{nohup_flags} > {results}/grid.out 2>&1 &
+tail -f {results}/grid.out
 ```
 
 Same script, same resumability. Use the cells below to watch progress, or to
 run a single cell of the grid interactively."""),
 
-        md("""## Smoke first
+        md(f"""## Smoke first
 
-Nothing in this pipeline has been timed, let alone timed at 4 chains x
-3000/2000. Run the wiring check before committing a weekend to it — it is
-two chains of 200/200 and writes to the same directories, so a real run
-afterwards needs `--force` (or delete the smoke `.npz` files).
+Run the wiring check before committing a weekend to a full pass — it is
+{SMOKE["chains"]} chains of {SMOKE["warmup"]}/{SMOKE["samples"]} with a
+{SMOKE["advi"]}-epoch ADVI warm-start, against {FULL["chains"]} x
+{FULL["warmup"]}/{FULL["samples"]} for the real thing. It writes to the same
+directories, so a real run afterwards needs `--force` (or delete the smoke
+`.npz` files).
+
+It is sized to answer *does the plumbing work*, not *what is the answer*: at
+{SMOKE["warmup"]} warmup draws the R-hats and the noise floor mean nothing.
+Read only the three checks below off it. The floor on how fast it can go is
+the B-MI imputation fit, which does not shrink with chain length; a re-run in
+a directory that already has `imputation_model/` reuses it.
+
+Override any of it with `--num-chains`, `--num-warmup`, `--num-samples`,
+`--advi-iterations`.
 
 Three things to read off it, each of which silently invalidates a run:
 
@@ -538,47 +643,48 @@ def run_grid(*flags):
 
 # Wiring check only -- uncomment to run it. It writes .npz files, so the
 # full pass below would then need --force.
-# run_grid("--smoke")'''),
+# run_grid("--smoke", {flags})'''),
 
-        md("""## The full grid
+        md(f"""## The full grid
 
 4 chains, 3000 warmup, 2000 samples, six times over. Only start this once
 the smoke output above looks right.
 
-If you smoke-tested first, the smoke `.npz` files are sitting in the output
-directories and will cause every run to be skipped as already complete —
-hence `--force` here."""),
+{spec["force_note"]}"""),
 
-        code('''run_grid("--force")'''),
+        code(f'''run_grid({flags})'''),
 
-        md("""## Progress
+        md(f"""## Progress
 
-Safe to run while the grid is still going: `grid_summary.csv` is rewritten
-after every run, and each run's `run.log` is flushed as it goes."""),
+Safe to run while the grid is still going: `{results}/grid_summary.csv` is
+rewritten after every run, and each run's `run.log` is flushed as it goes."""),
 
-        code('''import pandas as pd
+        code(f'''import pandas as pd
 
-summary = pd.read_csv(REPO / "results" / "grid_summary.csv")
-cols = [c for c in ["design", "itemset", "n_items", "status", "minutes",
+summary = pd.read_csv(REPO / "{results}" / "grid_summary.csv")
+cols = [c for c in ["design", "variant", "itemset", "n_items", "status", "minutes",
                     "birt_max_rhat", "bmi_max_rhat", "flat_max_rhat",
                     "bmi_fallback_pct", "advi_init_count",
                     "theta_rmse_flat_vs_birt", "theta_rmse_bmi_vs_birt"]
         if c in summary.columns]
 summary[cols]'''),
 
-        md("""## Re-run one cell
+        md(f"""## Re-run one cell
 
 `--only` takes `design/itemset`, e.g. after fixing whatever made a single
-run fail:
+run fail. Keep {flags_prose} on it — without that the re-run reads the
+other variant's data and writes over the other variant's results:
 
 ```
-run_grid("--only", "standard/nobike", "--force")
+run_grid("--only", "standard/nobike", {flags}, "--force")
 ```"""),
 
-        code('''# run_grid("--only", "standard/nobike", "--force")'''),
+        code(f'''# run_grid("--only", "standard/nobike", {flags}, "--force")'''),
     ]
     return {
-        "cells": _assign_ids(cells, "rungrid"),
+        "cells": _assign_ids(
+            cells,
+            "rungrid" if variant == "main" else "rungridsens"),
         "metadata": {
             "kernelspec": {"display_name": "Python 3", "language": "python",
                            "name": "python3"},
@@ -589,6 +695,40 @@ run_grid("--only", "standard/nobike", "--force")
     }
 
 
+def _keep_outputs(nb: dict, path: Path) -> dict:
+    """Carry stored outputs across a regeneration, where the source is unchanged.
+
+    `run_all.ipynb` holds the output of a completed grid -- for the main
+    variant that is a 99-hour run, and the only record of its ADVI-init counts,
+    fallback rates and per-arm R-hats outside the logs. Regenerating wrote a
+    fresh notebook with empty outputs and silently destroyed it. So: for every
+    cell whose id AND source both match the notebook already on disk, keep that
+    cell's outputs and execution count. Cells whose source changed come back
+    empty, which is right -- their old output no longer describes them.
+    """
+    if not path.exists():
+        return nb
+    try:
+        old = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return nb
+    stored = {
+        c.get("id"): c
+        for c in old.get("cells", [])
+        if c.get("cell_type") == "code" and c.get("outputs")
+    }
+    kept = 0
+    for cell in nb["cells"]:
+        prev = stored.get(cell.get("id"))
+        if prev is not None and prev.get("source") == cell["source"]:
+            cell["outputs"] = prev["outputs"]
+            cell["execution_count"] = prev.get("execution_count")
+            kept += 1
+    if kept:
+        print(f"  kept stored output of {kept} unchanged cell(s) in {path.name}")
+    return nb
+
+
 def main() -> None:
     for design, spec in DESIGNS.items():
         for itemset, ispec in ITEM_SETS.items():
@@ -597,9 +737,11 @@ def main() -> None:
             path.write_text(json.dumps(nb, indent=1) + "\n")
             print(f"wrote {path}  ({ispec['n_items']} items)")
 
-    path = OUT / "run_all.ipynb"
-    path.write_text(json.dumps(build_runner(), indent=1) + "\n")
-    print(f"wrote {path}  (batch driver)")
+    for name, spec in RUNNERS.items():
+        path = OUT / f"{name}.ipynb"
+        nb = _keep_outputs(build_runner(spec), path)
+        path.write_text(json.dumps(nb, indent=1) + "\n")
+        print(f"wrote {path}  (batch driver, variant={spec['variant']})")
 
 
 if __name__ == "__main__":

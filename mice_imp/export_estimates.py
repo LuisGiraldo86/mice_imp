@@ -94,7 +94,7 @@ def _as_int_if_integral(col: pd.Series) -> np.ndarray | pd.Series:
 
 
 def item_table(arms: dict[str, dict], design: str, itemset: str,
-               include_d: bool) -> pd.DataFrame:
+               include_d: bool, variant: str = "main") -> pd.DataFrame:
     """One row per (arm, item), thresholds widened to b1..bK-1."""
     rows = []
     for arm, res in arms.items():
@@ -102,6 +102,7 @@ def item_table(arms: dict[str, dict], design: str, itemset: str,
         for i, item in enumerate(res["item_keys"]):
             row = {
                 "design": design,
+                "variant": variant,
                 "itemset": itemset,
                 "arm": arm,
                 "item": item,
@@ -124,7 +125,8 @@ def item_table(arms: dict[str, dict], design: str, itemset: str,
 
 
 def theta_table(
-    arms: dict[str, dict], design: str, itemset: str, source: Path | None
+    arms: dict[str, dict], design: str, itemset: str, source: Path | None,
+    variant: str = "main",
 ) -> pd.DataFrame:
     """One row per respondent, one theta/SE column pair per arm."""
     n = {arm: res["eap"].size for arm, res in arms.items()}
@@ -133,6 +135,7 @@ def theta_table(
     n_rows = next(iter(n.values()))
 
     out = pd.DataFrame({"design": np.repeat(design, n_rows),
+                        "variant": np.repeat(variant, n_rows),
                         "itemset": np.repeat(itemset, n_rows)})
     if source is not None:
         src = read_dta(source)
@@ -162,6 +165,7 @@ def export(
     source: Path | None = None,
     arms: tuple[str, ...] = ARMS,
     include_d: bool = False,
+    variant: str = "main",
 ) -> tuple[Path, Path]:
     # Results live at results/<design>/<itemset>/, so the directory name alone
     # is "full" or "nobike" -- not a design. Fall back to the parent when the
@@ -195,8 +199,8 @@ def export(
                 file=sys.stderr,
             )
 
-    items = item_table(loaded, design, itemset, include_d)
-    thetas = theta_table(loaded, design, itemset, source)
+    items = item_table(loaded, design, itemset, include_d, variant)
+    thetas = theta_table(loaded, design, itemset, source, variant)
 
     item_path = results_dir / "item_parameters.csv"
     theta_path = results_dir / "theta.csv"
@@ -219,6 +223,11 @@ def main():
                          "one of %s)" % ", ".join(sorted(ITEM_SETS)))
     ap.add_argument("--design", default=None,
                     help="design label for the CSVs (default: directory name)")
+    ap.add_argument("--variant", default="main",
+                    help="which anchor variant these estimates come from: "
+                         "'main' (six anchors) or 'reduced_anchor' (three). "
+                         "Goes into a column of both CSVs so the two cannot "
+                         "be pooled by accident.")
     ap.add_argument("--source", type=Path, default=None,
                     help="the design .dta, to attach id_work and grp_final")
     ap.add_argument("--arms", default=",".join(ARMS))
@@ -233,6 +242,7 @@ def main():
         source=args.source,
         arms=tuple(a.strip() for a in args.arms.split(",") if a.strip()),
         include_d=args.include_d,
+        variant=args.variant,
     )
 
 

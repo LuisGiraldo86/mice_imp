@@ -60,12 +60,70 @@ ITEMSETS = ["full", "nobike"]
 ARMS = ("birt", "bmi", "flat")
 
 DATA_DIR = REPO / "data_wdfab"
-RESULTS = REPO / "results"
 CARDINALITY = 5
+
+# The anchor variants of the delivered design files.
+#
+# The `_small` files are NOT a smaller sample, whatever the name suggests --
+# same 1363 respondents, same 128 columns, same form sizes 455/454/454.
+# What changes is the anchor set: three anchors (DA054/DA058/DA066) where the
+# main files carry six, which thins every form-pair overlap:
+#
+#     design        main overlap 1&2/1&3/2&3   reduced_anchor
+#     CommonItem            6 / 6 / 6            3 / 3 / 3
+#     Binterlaced           2 / 2 / 2            1 / 1 / 1
+#     Standard              3 / 3 / 0            1 / 2 / 0
+#
+# So this is a sensitivity analysis on LINKING STRENGTH, and a direct probe of
+# open issue B: two of the three surviving anchors are the correlated pair
+# DA054/DA058 (r = 0.840). All three are DA items, so `nobike` leaves the
+# anchor set untouched in both variants exactly as it does in `main`.
+#
+# Suffix and results root travel together on purpose. They were separate flags
+# in the first cut, and a run with the suffix but the default root would have
+# overwritten the finished main grid -- 99 hours of chains -- without a word.
+VARIANTS = {
+    "main": {"suffix": "", "results": "results"},
+    "reduced_anchor": {"suffix": "_small", "results": "results_reduced_anchor"},
+}
+DEFAULT_VARIANT = "main"
+
+# Sampler profiles. `full` is the inferential run; `smoke` is a WIRING CHECK
+# and nothing else -- it exists to answer "does this plumbing work", not "what
+# is the answer", so it is sized to finish in minutes.
+#
+# Smoke also cuts the ADVI warm-start from 100 epochs to 20. At 200/200 the
+# warm-start was a visible share of the run, and it is not what a wiring check
+# is testing -- fact 17 only asks whether "Initializing from ADVI solution"
+# APPEARS for all three arms, not whether ADVI converged.
+#
+# What smoke cannot shrink is the B-MI imputation fit
+# (PairwiseOrdinalStackingModel). That cost is independent of chain length, so
+# it sets the floor on how fast a three-arm smoke can be. Re-running a smoke in
+# a directory that already holds `imputation_model/` reuses it.
+PROFILES = {
+    "full":  {"chains": 4, "warmup": 3000, "samples": 2000, "advi": 100},
+    "smoke": {"chains": 2, "warmup": 50,   "samples": 50,   "advi": 20},
+}
+
+# Rebound by main() from --variant. Module-level so the helpers below keep
+# their existing signatures.
+VARIANT = DEFAULT_VARIANT
+RESULTS = REPO / VARIANTS[DEFAULT_VARIANT]["results"]
+
+
+def set_variant(variant: str) -> None:
+    global VARIANT, RESULTS
+    if variant not in VARIANTS:
+        raise SystemExit(f"unknown --variant {variant!r}; "
+                         f"known: {', '.join(VARIANTS)}")
+    VARIANT = variant
+    RESULTS = REPO / VARIANTS[variant]["results"]
 
 
 def data_path(design: str) -> Path:
-    return DATA_DIR / f"WDFAB_ExperimentalData_CM{design}_Jul2026.dta"
+    suffix = VARIANTS[VARIANT]["suffix"]
+    return DATA_DIR / f"WDFAB_ExperimentalData_CM{design}_Jul2026{suffix}.dta"
 
 
 def run_dir(design: str, itemset: str) -> Path:
@@ -143,11 +201,12 @@ def _read_noise_floor(d: Path) -> dict:
 
 
 def run_one(design: str, itemset: str, smoke: bool, force: bool,
-            seed: int, export: bool) -> dict:
+            seed: int, export: bool, overrides: dict | None = None,
+            refit_imputer: bool = False) -> dict:
     from mice_imp.cm_bayes_arms import run_all_arms
 
     out_dir = run_dir(design, itemset)
-    row = {"design": design.lower(), "itemset": itemset,
+    row = {"design": design.lower(), "variant": VARIANT, "itemset": itemset,
            "n_items": len(ITEM_SETS[itemset]),
            "started": time.strftime("%Y-%m-%d %H:%M:%S")}
 
@@ -159,11 +218,15 @@ def run_one(design: str, itemset: str, smoke: bool, force: bool,
 
     out_dir.mkdir(parents=True, exist_ok=True)
     log_path = out_dir / "run.log"
-    chains, warmup, samples = (2, 200, 200) if smoke else (4, 3000, 2000)
+    prof = dict(PROFILES["smoke" if smoke else "full"])
+    prof.update({k: v for k, v in (overrides or {}).items() if v is not None})
+    chains, warmup, samples = prof["chains"], prof["warmup"], prof["samples"]
 
-    print(f"\n{'=' * 72}\n{design} / {itemset}  "
+    print(f"\n{'=' * 72}\n{design} / {itemset}  [{VARIANT}]  "
           f"({len(ITEM_SETS[itemset])} items, {chains} chains, "
-          f"{warmup}/{samples})\n  log: {log_path}\n{'=' * 72}", flush=True)
+          f"{warmup}/{samples}, advi {prof['advi']})"
+          f"\n  data: {data_path(design).name}"
+          f"\n  log: {log_path}\n{'=' * 72}", flush=True)
 
     t0 = time.time()
     with open(log_path, "w") as fh:
@@ -178,15 +241,26 @@ def run_one(design: str, itemset: str, smoke: bool, force: bool,
                     output_dir=out_dir,
                     imputation_model_path=out_dir / "imputation_model",
                     arms=ARMS,
+                    # `--force` means re-run this cell from scratch, and that
+                    # has to include the imputation model. run_all_arms
+                    # defaults to LOADING any imputation_model/ it finds beside
+                    # the .npz files, so without this a forced re-run silently
+                    # kept a stale imputer -- most sharply after a smoke run,
+                    # where the cache left behind is the one the real run would
+                    # then have picked up. The MCMC would be new, B-MI's PMFs
+                    # would not, and nothing in the output would say so.
+                    refit_imputer=refit_imputer or force,
                     seed=seed,
                     num_chains=chains,
                     num_warmup=warmup,
                     num_samples=samples,
+                    advi_iterations=prof["advi"],
                 )
                 if export:
                     from mice_imp.export_estimates import export as export_csv
                     export_csv(out_dir, design=design.lower(), itemset=itemset,
-                               source=data_path(design), include_d=True)
+                               source=data_path(design), include_d=True,
+                               variant=VARIANT)
             row["status"] = "ok"
         except Exception as exc:                       # noqa: BLE001
             traceback.print_exc(file=fh)
@@ -215,7 +289,8 @@ def write_summary(rows: list[dict]) -> Path:
 
 def print_summary(rows: list[dict]) -> None:
     df = pd.DataFrame(rows)
-    cols = [c for c in ["design", "itemset", "n_items", "started", "status", "minutes",
+    cols = [c for c in ["design", "variant", "itemset", "n_items", "started",
+                        "status", "minutes",
                         "birt_max_rhat", "bmi_max_rhat", "flat_max_rhat",
                         "bmi_fallback_pct", "advi_init_count",
                         "theta_rmse_flat_vs_birt", "theta_rmse_bmi_vs_birt"]
@@ -250,12 +325,38 @@ def main() -> None:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--smoke", action="store_true",
-                    help="2 chains, 200/200 -- a wiring check, NOT inference")
+                    help=f"wiring check, NOT inference: {PROFILES['smoke']['chains']} "
+                         f"chains, {PROFILES['smoke']['warmup']}/"
+                         f"{PROFILES['smoke']['samples']}, "
+                         f"{PROFILES['smoke']['advi']} ADVI epochs")
+    ap.add_argument("--num-chains", type=int, default=None,
+                    help="override the profile's chain count")
+    ap.add_argument("--num-warmup", type=int, default=None,
+                    help="override the profile's warmup draws")
+    ap.add_argument("--num-samples", type=int, default=None,
+                    help="override the profile's kept draws")
+    ap.add_argument("--advi-iterations", type=int, default=None,
+                    help="override the ADVI warm-start epochs (fact 7: this is "
+                         "a warm-start, never the inference)")
     ap.add_argument("--force", action="store_true",
-                    help="re-run cells that already have all three arm .npz")
+                    help="re-run cells that already have all three arm .npz. "
+                         "Implies --refit-imputer: a forced re-run trains "
+                         "everything from scratch, imputation model included.")
+    ap.add_argument("--refit-imputer", action="store_true",
+                    help="refit the B-MI imputation model even if a saved one "
+                         "sits in the output directory. On by default under "
+                         "--force. Fact 10: the imputer is per-design and must "
+                         "never be carried across designs or variants.")
     ap.add_argument("--only", default=None,
                     help="comma-separated design/itemset, e.g. "
                          "'commonitem/full,standard/nobike'")
+    ap.add_argument("--variant", default=DEFAULT_VARIANT,
+                    choices=sorted(VARIANTS),
+                    help="which anchor variant to fit. 'main' is the six-anchor "
+                         "delivery into results/; 'reduced_anchor' is the "
+                         "three-anchor `_small` files into "
+                         "results_reduced_anchor/. NOT a sample-size variant -- "
+                         "both are N=1363 (see VARIANTS).")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--summary", type=Path, default=None,
                     help="where to write the summary CSV. Give each concurrent "
@@ -265,6 +366,8 @@ def main() -> None:
     ap.add_argument("--no-export", action="store_true",
                     help="skip the CSV export after each run")
     args = ap.parse_args()
+
+    set_variant(args.variant)
 
     global SUMMARY_PATH
     SUMMARY_PATH = args.summary
@@ -281,20 +384,32 @@ def main() -> None:
     if missing:
         raise SystemExit("missing design files:\n  " + "\n  ".join(missing))
 
-    print(f"grid: {len(grid)} run(s), smoke={args.smoke}, force={args.force}")
+    overrides = {"chains": args.num_chains, "warmup": args.num_warmup,
+                 "samples": args.num_samples, "advi": args.advi_iterations}
+    prof = dict(PROFILES["smoke" if args.smoke else "full"])
+    prof.update({k: v for k, v in overrides.items() if v is not None})
+
+    print(f"grid: {len(grid)} run(s), variant={VARIANT} "
+          f"(data *{VARIANTS[VARIANT]['suffix'] or '<none>'}.dta -> "
+          f"{RESULTS.relative_to(REPO)}/), "
+          f"smoke={args.smoke}, force={args.force}, "
+          f"{prof['chains']} chains {prof['warmup']}/{prof['samples']} "
+          f"advi {prof['advi']}")
     rows = []
     t0 = time.time()
     for design, itemset in grid:
         # Publish the row as 'running' FIRST. Writing only on completion left a
         # killed run represented by whatever the file said before it started --
         # a stale failure that reads exactly like a current one.
-        rows.append({"design": design.lower(), "itemset": itemset,
+        rows.append({"design": design.lower(), "variant": VARIANT,
+                     "itemset": itemset,
                      "n_items": len(ITEM_SETS[itemset]),
                      "started": time.strftime("%Y-%m-%d %H:%M:%S"),
                      "status": "running", "minutes": None})
         write_summary(rows)
         rows[-1] = run_one(design, itemset, args.smoke, args.force,
-                           args.seed, not args.no_export)
+                           args.seed, not args.no_export, overrides,
+                           args.refit_imputer)
         path = write_summary(rows)          # rewritten after every run
         print(f"  -> {rows[-1]['status']}  ({rows[-1]['minutes']} min)  "
               f"summary: {path}", flush=True)
