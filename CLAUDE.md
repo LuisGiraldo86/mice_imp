@@ -22,9 +22,11 @@ the test scale. CM was administered to everyone, so it has complete data
   block is unique to the German instrument, carries the strongest local
   dependence (open issue B), and is where the MCAR premise is most strained
   (open issue A); the `nobike` run shows whether any conclusion depends on
-  it. It is a sensitivity analysis, not a fallback — report both. Dropping
-  the block leaves all six anchors (all `DA*`) untouched, so form-pair
-  overlap is identical in both runs. The lists live in
+  it. It is a sensitivity analysis, not a fallback — report both. In the main
+  and reduced-anchor files dropping the block leaves every anchor (all
+  `DA*`) untouched, so form-pair overlap is identical in both runs. **Not in
+  the alt-anchor files**: two of their anchors are `Bike_*`, so their
+  `nobike` run also weakens linking (see "Data files"). The lists live in
   `wdfab_io.ITEM_SETS`.
 - **Model:** graded response model (GRM) throughout.
 - **Comparisons:** theta vs CD by MSE and Bland-Altman; slopes by OLS
@@ -77,6 +79,8 @@ notebooks/
   cm_{commonitem,standard,binterlaced}_{full,nobike}.ipynb  # 6 drivers
 results/<design>/<itemset>/   # {birt,bmi,flat}.npz, noise_floor.json,
                               # summary.npz, item_parameters.csv, theta.csv
+results_reduced_anchor/<design>/<itemset>/   # same, for the _small files
+results_alt_anchor/<design>/<itemset>/       # same, for the _Aug2026_alt files
 ```
 
 `export_estimates.py` is the coauthor-facing deliverable: `a` and `b1..b4`
@@ -160,6 +164,8 @@ on every unmasked cell).
 | `data/Datenexport_test_mar2026.dta` | CD reference, N = 1363, 217 cols |
 | `data/Datenexport_test_mar2026_2.dta` | **not used** — see below |
 | `data_wdfab/WDFAB_ExperimentalData_CM{CommonItem,Standard,Binterlaced}_Jul2026.dta` | masked designs, 128 cols each |
+| `data_wdfab/WDFAB_ExperimentalData_CM{CommonItem,Standard,Binterlaced}_Jul2026_small.dta` | reduced-anchor sensitivity designs, 128 cols each |
+| `data_wdfab/WDFAB_ExperimentalData_CM{CommonItem,Standard,Binterlaced}_Aug2026_alt.dta` | alt-anchor sensitivity designs, 128 cols each |
 
 `_2` is **out of scope (2026-08-21)**. It is a 642-row subset of the main
 export with byte-identical values, selected on having answered the CM items
@@ -167,10 +173,32 @@ by a rule nobody has been able to state, and its respondents score 0.28 SD
 lower on community mobility than the rest. It is not a cleaner CD source and
 it is not an alternative dataset. Do not reopen it.
 
-The `_small` variants were deleted on 2026-08-21. They were **not** subsets:
-same 1363 rows and columns, but an earlier reduced-anchor variant with only
-`DA054` / `DA058` / `DA066` multi-form (CommonItem overlap 3/3/3, not
-6/6/6). If they reappear, do not treat them as a smaller sample.
+The `_small` variants (`..._Jul2026_small.dta`, one per design) are the
+**reduced-anchor sensitivity analysis** — confirmed as intended 2026-09-14.
+They are **not** subsets or a smaller sample: same 1363 rows and 128 columns,
+same form sizes, but only three anchors (`DA054` / `DA058` / `DA066`)
+multi-form. Overlap 1&2 / 1&3 / 2&3 is CommonItem 3/3/3, Binterlaced 1/1/1,
+Standard 1/2/0. They vary **linking strength**, and two of the three anchors
+are the correlated pair `DA054`/`DA058` (open issue B). Run them with
+`python -m mice_imp.run_grid --variant reduced_anchor` (or
+`notebooks/run_all_sensitivity.ipynb`); results go to
+`results_reduced_anchor/` and every exported row carries
+`variant = reduced_anchor`. Preflight 2b fails on them too, slightly worse
+than on the main files (10–11 items with a category < 20).
+
+The `_Aug2026_alt` variants (arrived 2026-09-14) are the **alt-anchor
+sensitivity analysis**: same respondents, row order, `grp_final`, anchor
+count, form-pair overlap and items per form as the main files, and they agree
+with them cell for cell wherever both observe a response — but a **different
+six anchors**, `DA052 DA058 DA066 DA073 Bike_3 Bike_7` (four of main's
+replaced). They vary **anchor choice**. Because two anchors are bike items,
+`nobike` overlap drops to CommonItem 4/4/4, Binterlaced **2/2/0** (forms 2
+and 3 unlinked), Standard 3/1/0; both item sets are still run (decided
+2026-09-14), but that `full`-vs-`nobike` contrast confounds item set with
+linking and must be reported as such. `Bike_7` is in the strongest dependent
+pair on the scale (issue B). Run with `--variant alt_anchor` or
+`notebooks/run_all_alt_anchor.ipynb`; results go to `results_alt_anchor/`.
+Preflight 2b fails as on main (9–10 items).
 
 All three design files share one 128-column schema and cover exactly the CD
 respondent set (`id_work` sets identical). **None of them is complete**: in

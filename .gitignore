@@ -14,6 +14,8 @@ results/**/*.npz
 results/**/imputation_model/
 results_reduced_anchor/**/*.npz
 results_reduced_anchor/**/imputation_model/
+results_alt_anchor/**/*.npz
+results_alt_anchor/**/imputation_model/
 
 # Smoke runs, the sampler sweep, the superseded 26-item grid, launch logs.
 # Kept on disk as provenance, deliberately not in git.

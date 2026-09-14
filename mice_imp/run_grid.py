@@ -62,29 +62,39 @@ ARMS = ("birt", "bmi", "flat")
 DATA_DIR = REPO / "data_wdfab"
 CARDINALITY = 5
 
-# The anchor variants of the delivered design files.
+# The anchor variants of the delivered design files. All are N = 1363, same
+# 128 columns, same respondents in the same row order, same grp_final form
+# assignment, and agree cell-for-cell wherever both observe a response -- they
+# differ only in which items are masked in which form.
 #
-# The `_small` files are NOT a smaller sample, whatever the name suggests --
-# same 1363 respondents, same 128 columns, same form sizes 455/454/454.
-# What changes is the anchor set: three anchors (DA054/DA058/DA066) where the
-# main files carry six, which thins every form-pair overlap:
+# reduced_anchor (`_Jul2026_small`): NOT a smaller sample, whatever the name
+# suggests. Three anchors (DA054/DA058/DA066) where main carries six, which
+# thins every form-pair overlap. A sensitivity analysis on LINKING STRENGTH.
 #
-#     design        main overlap 1&2/1&3/2&3   reduced_anchor
-#     CommonItem            6 / 6 / 6            3 / 3 / 3
-#     Binterlaced           2 / 2 / 2            1 / 1 / 1
-#     Standard              3 / 3 / 0            1 / 2 / 0
+# alt_anchor (`_Aug2026_alt`): the same design structure as main -- identical
+# overlap counts and items per form -- with a DIFFERENT six anchors:
+# DA052/DA058/DA066/DA073/Bike_3/Bike_7 (four of main's six replaced). A
+# sensitivity analysis on ANCHOR CHOICE.
 #
-# So this is a sensitivity analysis on LINKING STRENGTH, and a direct probe of
-# open issue B: two of the three surviving anchors are the correlated pair
-# DA054/DA058 (r = 0.840). All three are DA items, so `nobike` leaves the
-# anchor set untouched in both variants exactly as it does in `main`.
+#     overlap 1&2/1&3/2&3   main (full=nobike)   reduced (full=nobike)   alt full    alt nobike
+#     CommonItem            6 / 6 / 6            3 / 3 / 3               6 / 6 / 6   4 / 4 / 4
+#     Binterlaced           2 / 2 / 2            1 / 1 / 1               2 / 2 / 2   2 / 2 / 0
+#     Standard              3 / 3 / 0            1 / 2 / 0               3 / 3 / 0   3 / 1 / 0
 #
-# Suffix and results root travel together on purpose. They were separate flags
-# in the first cut, and a run with the suffix but the default root would have
-# overwritten the finished main grid -- 99 hours of chains -- without a word.
+# alt_anchor/nobike IS NOT LIKE THE OTHER nobike RUNS. main's and reduced's
+# anchors are all DA items, so dropping the bike block leaves linking alone.
+# Two of alt's anchors are bike items, so its nobike run loses a third of the
+# linking as well as the bike block -- and Binterlaced forms 2 and 3 end up
+# sharing no item at all. Run and report it (decided 2026-09-14), but its
+# full-vs-nobike contrast confounds item set with linking strength.
+#
+# Data stem and results root travel together on purpose. They were separate
+# flags in the first cut, and a run with the data but the default root would
+# have overwritten the finished main grid -- 99 hours of chains -- silently.
 VARIANTS = {
-    "main": {"suffix": "", "results": "results"},
-    "reduced_anchor": {"suffix": "_small", "results": "results_reduced_anchor"},
+    "main": {"stem": "Jul2026", "results": "results"},
+    "reduced_anchor": {"stem": "Jul2026_small", "results": "results_reduced_anchor"},
+    "alt_anchor": {"stem": "Aug2026_alt", "results": "results_alt_anchor"},
 }
 DEFAULT_VARIANT = "main"
 
@@ -122,8 +132,8 @@ def set_variant(variant: str) -> None:
 
 
 def data_path(design: str) -> Path:
-    suffix = VARIANTS[VARIANT]["suffix"]
-    return DATA_DIR / f"WDFAB_ExperimentalData_CM{design}_Jul2026{suffix}.dta"
+    stem = VARIANTS[VARIANT]["stem"]
+    return DATA_DIR / f"WDFAB_ExperimentalData_CM{design}_{stem}.dta"
 
 
 def run_dir(design: str, itemset: str) -> Path:
@@ -352,11 +362,12 @@ def main() -> None:
                          "'commonitem/full,standard/nobike'")
     ap.add_argument("--variant", default=DEFAULT_VARIANT,
                     choices=sorted(VARIANTS),
-                    help="which anchor variant to fit. 'main' is the six-anchor "
-                         "delivery into results/; 'reduced_anchor' is the "
-                         "three-anchor `_small` files into "
-                         "results_reduced_anchor/. NOT a sample-size variant -- "
-                         "both are N=1363 (see VARIANTS).")
+                    help="which anchor variant to fit, each into its own "
+                         "results root. 'main': the six-anchor Jul2026 files, "
+                         "results/. 'reduced_anchor': the three-anchor _small "
+                         "files, results_reduced_anchor/. 'alt_anchor': the "
+                         "Aug2026_alt files, a different six anchors, "
+                         "results_alt_anchor/. All N=1363 (see VARIANTS).")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--summary", type=Path, default=None,
                     help="where to write the summary CSV. Give each concurrent "
@@ -390,7 +401,7 @@ def main() -> None:
     prof.update({k: v for k, v in overrides.items() if v is not None})
 
     print(f"grid: {len(grid)} run(s), variant={VARIANT} "
-          f"(data *{VARIANTS[VARIANT]['suffix'] or '<none>'}.dta -> "
+          f"(data *_{VARIANTS[VARIANT]['stem']}.dta -> "
           f"{RESULTS.relative_to(REPO)}/), "
           f"smoke={args.smoke}, force={args.force}, "
           f"{prof['chains']} chains {prof['warmup']}/{prof['samples']} "

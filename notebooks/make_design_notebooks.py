@@ -478,9 +478,12 @@ export(OUTPUT_DIR, design=DESIGN.lower(), itemset=ITEMSET,
 #
 # `_small` is a misleading filename and the header below says so out loud:
 # those files are the same 1363 respondents with THREE anchors instead of six,
-# not a smaller sample. See VARIANTS in mice_imp/run_grid.py.
+# not a smaller sample. `_alt` keeps six anchors but changes which items they
+# are -- two of them bike items, which changes what `nobike` means for it.
+# See VARIANTS in mice_imp/run_grid.py.
 RUNNERS = {
     "run_all": {
+        "slug": "rungrid",
         "variant": "main",
         "results": "results",
         "flags": '"--force"',
@@ -495,6 +498,7 @@ directories and will cause every run to be skipped as already complete —
 hence `--force` here.""",
     },
     "run_all_sensitivity": {
+        "slug": "rungridsens",
         "variant": "reduced_anchor",
         "results": "results_reduced_anchor",
         "flags": '"--variant", "reduced_anchor"',
@@ -543,6 +547,69 @@ parameters as not interpretable) — it is not resolved by running this grid.
 
 """,
         "force_note": """No `--force` here: `results_reduced_anchor/` starts empty, so nothing is
+skipped. Add it only after a smoke run has put `.npz` files there.""",
+    },
+    "run_all_alt_anchor": {
+        # Own cell-id namespace: _keep_outputs matches on id, and the ids of the
+        # two existing notebooks must not move or their stored output is lost.
+        "slug": "rungridalt",
+        "variant": "alt_anchor",
+        "results": "results_alt_anchor",
+        "flags": '"--variant", "alt_anchor"',
+        "title": "Sensitivity grid — a different six anchors",
+        "lede": (
+            "The same six calibrations, `birt` -> `bmi` -> `flat` in each, on "
+            "the `_Aug2026_alt` design files."
+        ),
+        "preamble": """## What this varies — read this before quoting any number from it
+
+The `_alt` files keep the main delivery's design structure exactly — same 1363
+respondents in the same order, same form assignment, same anchor count, same
+form-pair overlap and items per form — and change **which items are the
+anchors**:
+
+| | anchors |
+|---|---|
+| main | `DA054` `DA058` `DA060` `DA064` `DA066` `DA067` |
+| alt | `DA052` `DA058` `DA066` `DA073` `Bike_3` `Bike_7` |
+
+Four of the six are replaced, and the single-form items are reshuffled across
+forms to make room. Observed responses agree with the main files cell for cell
+wherever both carry one, so this is a different mask over the same data.
+Verified against the delivered files on 2026-09-14. It is a sensitivity
+analysis on **anchor choice**, as `reduced_anchor` is on anchor count.
+
+Issue B bites the new set directly: `Bike_7` is a member of the strongest
+dependent pair on the scale (`Bike_1` / `Bike_7`, r = 0.931), and `DA073`
+correlates 0.888 with `DA074`.
+
+### `nobike` is not like the other `nobike` runs
+
+Two of the six anchors are bicycling items. Dropping the bike block therefore
+removes a third of the linking as well as the block itself — unlike `main` and
+`reduced_anchor`, whose anchors are all `DA*`:
+
+| design | overlap 1&2 / 1&3 / 2&3 — alt `full` | alt `nobike` |
+|---|---|---|
+| CommonItem | 6 / 6 / 6 | **4 / 4 / 4** |
+| Binterlaced | 2 / 2 / 2 | **2 / 2 / 0** |
+| Standard | 3 / 3 / 0 | **3 / 1 / 0** |
+
+Binterlaced `nobike` ends up with forms 2 and 3 sharing **no item**, as
+Standard has by design. Both item sets are run (decided 2026-09-14), but in
+this variant the `full`-vs-`nobike` contrast confounds dropping the bike block
+with weakening the linking. Say so wherever it is reported.
+
+### Preflight check 2b FAILs here too
+
+Run on 2026-09-14: **9–10 items have a category with fewer than 20 responses**
+(`DA061`, `DA053`, `DA068`, `Bike_1`, `Bike_6`, `DA069_r`, `DA074`, `DA067`,
+`DA060`, and `DA066` in Standard and Binterlaced) — about the same as the main
+files. This is the standing, deferred issue E; running this grid does not
+resolve it.
+
+""",
+        "force_note": """No `--force` here: `results_alt_anchor/` starts empty, so nothing is
 skipped. Add it only after a smoke run has put `.npz` files there.""",
     },
 }
@@ -683,8 +750,7 @@ run_grid("--only", "standard/nobike", {flags}, "--force")
     ]
     return {
         "cells": _assign_ids(
-            cells,
-            "rungrid" if variant == "main" else "rungridsens"),
+            cells, spec["slug"]),
         "metadata": {
             "kernelspec": {"display_name": "Python 3", "language": "python",
                            "name": "python3"},

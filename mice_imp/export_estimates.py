@@ -225,7 +225,8 @@ def main():
                     help="design label for the CSVs (default: directory name)")
     ap.add_argument("--variant", default="main",
                     help="which anchor variant these estimates come from: "
-                         "'main' (six anchors) or 'reduced_anchor' (three). "
+                         "'main' (six anchors), 'reduced_anchor' (three) or "
+                         "'alt_anchor' (a different six). "
                          "Goes into a column of both CSVs so the two cannot "
                          "be pooled by accident.")
     ap.add_argument("--source", type=Path, default=None,
