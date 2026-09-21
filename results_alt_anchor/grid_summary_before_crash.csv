@@ -1,0 +1,4 @@
+design,variant,itemset,n_items,started,status,minutes,bmi_fallback_pct,bmi_unfilled_pct,advi_init_count,birt_max_rhat,bmi_max_rhat,flat_max_rhat,theta_rmse_flat_vs_birt,max_abs_delta_a,theta_rmse_bmi_vs_birt
+commonitem,alt_anchor,full,27,2026-09-14 12:56:56,ok,1222.4,0.0,0.0,3.0,1.0172953408992462,1.0736672472395494,1.0237028927566159,0.0021725418941833945,0.028113272961279634,0.16586151561447893
+commonitem,alt_anchor,nobike,20,2026-09-15 09:19:22,ok,743.7,0.0,0.0,3.0,1.0085601329020635,1.0216088036888462,1.0083427664440716,0.0012772605758811645,0.017431654876975067,0.17150138816017393
+binterlaced,alt_anchor,full,27,2026-09-15 21:43:03,running,,,,,,,,,,
