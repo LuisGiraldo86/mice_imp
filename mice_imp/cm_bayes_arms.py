@@ -208,17 +208,26 @@ def flat_imputation_pmfs(data: dict, item_keys: list[str], cardinality: int) -> 
 # ----------------------------------------------------------------------------
 # Diagnostics
 # ----------------------------------------------------------------------------
+def rhat(samples) -> np.ndarray:
+    """Split-free R-hat across chains, as in Chang's script.
+
+    `samples` is (chain, draw, ...); returns one R-hat per trailing element.
+    """
+    arr = np.asarray(samples)
+    between = np.var(np.mean(arr, axis=1), axis=0, ddof=1)
+    within = np.mean(np.var(arr, axis=1, ddof=1), axis=0)
+    n = arr.shape[1]
+    return np.sqrt(((n - 1) / n * within + between) / np.maximum(within, 1e-30))
+
+
 def max_rhat(mcmc_samples: dict, verbose: bool = True) -> float:
-    """Split-free R-hat across chains, as in Chang's script."""
+    """Worst `rhat` over every sampled parameter."""
     worst = 0.0
     for name, samples in mcmc_samples.items():
         arr = np.asarray(samples)
         if arr.ndim < 2 or arr.shape[0] < 2:
             continue
-        between = np.var(np.mean(arr, axis=1), axis=0, ddof=1)
-        within = np.mean(np.var(arr, axis=1, ddof=1), axis=0)
-        n = arr.shape[1]
-        r = np.sqrt(((n - 1) / n * within + between) / np.maximum(within, 1e-30))
+        r = rhat(arr)
         worst = max(worst, float(np.max(r)))
         if verbose:
             print(f"    R-hat {name}: mean={np.mean(r):.4f} max={np.max(r):.4f}")
