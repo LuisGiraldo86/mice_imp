@@ -18,6 +18,9 @@ results_alt_anchor/**/*.npz
 results_alt_anchor/**/imputation_model/
 results_cd/**/*.npz
 results_cd/**/imputation_model/
+# Fits here run inside cm_cd_*.ipynb, whose saved output is the record; the
+# .log files are nbconvert status lines and one stopped CLI run.
+results_cd/**/*.log
 
 # Smoke runs, the sampler sweep, the superseded 26-item grid, launch logs.
 # Kept on disk as provenance, deliberately not in git.
