@@ -25,3 +25,8 @@ results_cd/**/*.log
 # Smoke runs, the sampler sweep, the superseded 26-item grid, launch logs.
 # Kept on disk as provenance, deliberately not in git.
 diagnostics/
+
+# Per-respondent estimates (one row per id_work) and private correspondence.
+# Removed from the whole history on 2026-11-10; kept on disk only.
+theta.csv
+mail_chain.txt
